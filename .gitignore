@@ -28,3 +28,4 @@ yarn-error.log*
 articles/
 .next/
 node_modules/
+sessions/
