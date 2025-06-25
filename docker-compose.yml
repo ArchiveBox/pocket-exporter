@@ -25,9 +25,9 @@ services:
     # https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/tunnel-guide/local/local-management/arguments/
     # https://hub.docker.com/r/cloudflare/cloudflared/tags
     image: cloudflare/cloudflared
-    command: tunnel --no-autoupdate --retries 15 --protocol http2 --overwrite-dns --hostname archivebox-pocket.zervice.io --url http://nodejs:3000 --name archivebox-pocket.zervice.io
+    command: tunnel --no-autoupdate --retries 15 --protocol http2 --overwrite-dns --hostname archivebox-pocket.zervice.io --url http://nextjs:3000 --name archivebox-pocket.zervice.io
     volumes:
       - ./etc/cloudflared:/etc/cloudflared
-    cpus: 4
+    cpus: 1.5
     mem_limit: 2048m
-    restart: on-failure
+    restart: unless-stopped
