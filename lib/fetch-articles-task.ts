@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { exportStore } from './export-store';
 import { Article } from '@/types/article';
+import { canFetchMoreArticles, recordArticlesFetched, hasValidPayment } from './session-utils';
 import { 
   getHeaders, 
   getGraphQLEndpoint, 
@@ -125,6 +126,17 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       console.log('\n⏹️  Fetch task stopped by user');
       break;
     }
+    
+    // Check if we've hit the paywall limit
+    if (!canFetchMoreArticles(sessionId, totalFetched)) {
+      console.log('\n⚠️  Reached free tier limit of 100 articles. Payment required to continue.');
+      exportStore.updateFetchTask(sessionId, {
+        status: 'stopped',
+        error: 'Payment required - reached 100 article limit',
+        endedAt: new Date()
+      });
+      break;
+    }
 
     if (cursor) {
       variables.pagination.after = cursor;
@@ -202,6 +214,8 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       // Update total fetched count
       totalFetched += edges.filter((edge: any) => edge?.node?.savedId).length;
       
+      // Record the number of articles fetched for payment tracking
+      recordArticlesFetched(sessionId, totalFetched);
       
       // Update session with progress - use totalFetched for count
       // Note: Pocket's API may report incorrect totalCount (e.g., capped at 5000)

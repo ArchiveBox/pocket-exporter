@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp } from "lucide-react"
 import { Article } from "@/types/article"
 import { ArticleImage } from "@/components/article-image"
+import { PaywallSection } from "@/components/PaywallSection"
 
 interface ParsedRequest {
   cookies: Record<string, string>
@@ -29,7 +30,7 @@ export default function PocketExportApp() {
   const parsedRequest = sessionData?.auth ? {
     url: 'https://getpocket.com/graphql',
     headers: sessionData.auth.headers || {},
-    cookies: sessionData.auth.cookies || {},
+    cookies: sessionData.auth.cookieString || {},
   } : null
   const authData = sessionData?.auth || null
   const fetchTask = sessionData?.currentFetchTask || { status: 'idle', count: 0, total: 0 }
@@ -49,6 +50,7 @@ export default function PocketExportApp() {
   const [downloadStatus, setDownloadStatus] = useState<{ total: number; completed: number; downloading: number; errors: number; articleStatus: Record<string, 'pending' | 'downloading' | 'completed' | 'error'> } | null>(null)
   const [isParsedRequestCollapsed, setIsParsedRequestCollapsed] = useState(false)
   const [sessionSizeMB, setSessionSizeMB] = useState<number>(0)
+  const [paymentData, setPaymentData] = useState<any>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentArticleCountRef = useRef(0)
   const filterInputRef = useRef<HTMLInputElement>(null)
@@ -137,11 +139,13 @@ export default function PocketExportApp() {
       title: "Login to Pocket",
       description: "Open Pocket in a new tab and log in to your account",
       icon: <ExternalLink className="w-5 h-5" />,
+      href: "https://getpocket.com/saves",
     },
     {
       title: "Open Developer Tools",
       description: "Press F12 or right-click and select 'Inspect Element'",
       icon: <Code className="w-5 h-5" />,
+      href: "https://developer.chrome.com/docs/devtools/network",
     },
     {
       title: "Find GraphQL Request",
@@ -205,6 +209,11 @@ export default function PocketExportApp() {
         if (typeof statusData.sessionSizeMB === 'number') {
           setSessionSizeMB(statusData.sessionSizeMB)
         }
+        
+        // Update payment data
+        if (statusData.paymentData) {
+          setPaymentData(statusData.paymentData);
+        }
 
         // Update step when we have auth
         if (statusData.auth && currentStep < 5) {
@@ -240,7 +249,7 @@ export default function PocketExportApp() {
       
       const data = await response.json()
       
-      if (!data.success) {
+      if (!data.success && !data.alreadyRunning) {
         alert(`Error: ${data.error}`)
       }
     } catch (error) {
@@ -307,7 +316,7 @@ export default function PocketExportApp() {
 
       const data = await response.json()
 
-      if (!data.success) {
+      if (!data.success && !data.alreadyRunning) {
         alert(`Error: ${data.error}`)
       }
     } catch (error) {
@@ -333,7 +342,7 @@ export default function PocketExportApp() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Pocket Data Exporter</h1>
-          <p className="text-lg text-gray-600">Export your saved articles from Mozilla Pocket.<br/>Export all your bookmark URLs, titles, excerpts, tags, saved article text, and more.</p>
+          <p className="text-lg text-gray-600">Export your saved articles from Mozilla Pocket.<br/>Export all your bookmark URLs, titles, excerpts, tags, archived article text (for Pocket Premium users), and more...</p>
         </div>
 
 
@@ -341,7 +350,7 @@ export default function PocketExportApp() {
         {!sessionId && <Card className="mb-8">
             <CardHeader>
               <CardTitle>Export Process</CardTitle>
-              <CardDescription>Follow these steps to export your Pocket data</CardDescription>
+              <CardDescription>Follow these steps to export your Pocket data. Pocket provides no public API to export saved article text so we use your <a href="https://getpocket.com/saves" target="_blank" rel="noopener noreferrer">getpocket.com</a> login cookies to do the export.</CardDescription>
             </CardHeader>
             <CardContent>
             <div className="space-y-4">
@@ -360,12 +369,13 @@ export default function PocketExportApp() {
                   </div>
                   <div className="flex-1">
                     <h3 className={`font-medium ${currentStep === index + 1 ? "text-blue-600" : "text-gray-900"}`}>
-                      {step.title}
+                      <a href={step.href || '#'} target={step.href ? "_blank" : "_self"} rel="noopener noreferrer">{step.title}</a>
                     </h3>
                     <p className="text-sm text-gray-600">{step.description}</p>
                   </div>
                 </div>
               ))}
+              <img src="/tutorial.jpg" alt="Pocket Authentication Tutorial" className="w-full h-auto" />
             </div>
           </CardContent>
         </Card> || ''}
@@ -409,7 +419,7 @@ export default function PocketExportApp() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Pocket Authentication</CardTitle>
+                  <CardTitle>Pocket Authentication &nbsp; {parsedRequest.headers || ''}</CardTitle>
                   <CardDescription>
                     {isParsedRequestCollapsed 
                       ? "Click to expand and update authentication" 
@@ -426,7 +436,7 @@ export default function PocketExportApp() {
               {sessionId && (
                 <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                   <p className="text-sm text-yellow-800 mb-2">
-                    To update authentication cookies for this session, paste a new fetch request:
+                    To the authentication link to Pocket, paste a fresh GraphQL Pocket request copied in <code>Fetch (node.js format)</code> from your browser's developer tools:
                   </p>
                   <div className="space-y-2">
                     <Textarea
@@ -443,28 +453,10 @@ export default function PocketExportApp() {
                     >
                       Update Authentication
                     </Button>
+                    <img src="/tutorial.jpg" alt="Pocket Authentication Tutorial" className="w-full h-auto" />
                   </div>
                 </div>
               )}
-              <div>
-                <h4 className="font-medium mb-2">URL:</h4>
-                <code className="block p-2 bg-gray-100 rounded text-sm break-all">{parsedRequest.url}</code>
-              </div>
-
-              <div>
-                <h4 className="font-medium mb-2">Headers:</h4>
-                <pre className="p-4 bg-gray-100 rounded text-sm overflow-auto max-h-40">
-                  {JSON.stringify(parsedRequest.headers, null, 2)}
-                </pre>
-              </div>
-
-              <div>
-                <h4 className="font-medium mb-2">Cookies:</h4>
-                <pre className="p-4 bg-gray-100 rounded text-sm overflow-auto max-h-40">
-                  {JSON.stringify(parsedRequest.cookies, null, 2)}
-                </pre>
-              </div>
-
               {!sessionId && (
                 <Button onClick={startFetchArticles} disabled={isExporting} className="w-full" size="lg">
                   {isExporting ? "Fetching Articles..." : "Fetch Article List"}
@@ -483,7 +475,7 @@ export default function PocketExportApp() {
                 <div className="space-y-1">
                   {sessionId && <div>Session ID: {sessionId}</div>}
                   <div className="flex gap-4 text-sm">
-                    <span>Articles pulled (metadata + text): <strong>{articles.length}</strong></span>
+                    <span>Articles pulled (metadata + text): <strong>{articles.length}</strong>{!paymentData?.hasUnlimitedAccess && articles.length >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</span>
                     <span>Original HTML downloaded: <strong>{downloadTask.count}/{articles.length}</strong></span>
                     <span>Total export size: <strong>{sessionSizeMB.toFixed(2)} MB</strong></span>
                   </div>
@@ -528,8 +520,9 @@ export default function PocketExportApp() {
                     <Button 
                       onClick={isExporting || isRateLimited ? stopFetchArticles : startFetchArticles}
                       size="sm"
-                      variant={isExporting || isRateLimited ? "destructive" : "outline"}
+                      variant={isExporting || isRateLimited ? "destructive" : "default"}
                       disabled={!sessionId && !isExporting && !isRateLimited}
+                      className={!isExporting && !isRateLimited && sessionId ? "bg-green-600 hover:bg-green-700 text-white animate-pulse shadow-lg shadow-green-600/25" : ""}
                     >
                       {isExporting || isRateLimited ? "Stop Fetching" : sessionId ? "Fetch Articles" : "Auth Required"}
                     </Button>
@@ -588,6 +581,27 @@ export default function PocketExportApp() {
                     </div>
                   </div>
                 )}
+
+                {paymentData?.hasUnlimitedAccess && (
+                  <div className="text-sm text-green-600 flex items-center gap-1 mt-1">
+                    <CheckCircle className="w-3 h-3" />
+                    {paymentData?.payment?.receiptUrl ? (
+                      <a 
+                        href={paymentData.payment.receiptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline"
+                        title="View payment receipt"
+                      >
+                        Purchased. Unlimited export enabled.
+                      </a>
+                    ) : (
+                      <span>Purchased. Unlimited export enabled.</span>
+                    )}
+                    &nbsp;
+                    <small className="text-xs text-gray-500">Contact <code>@ArchiveBoxApp</code> on X.com for support.</small>
+                  </div>
+                )}
                 
                 {/* Session URL */}
                 {sessionId && (
@@ -614,6 +628,13 @@ export default function PocketExportApp() {
             </CardContent>
           </Card>
 
+        {/* Paywall Section - Show inline when payment is required */}
+        {sessionId && fetchTask.error?.includes('Payment required') && !paymentData?.hasUnlimitedAccess && (
+          <PaywallSection 
+            sessionId={sessionId}
+            articleCount={articles.length}
+          />
+        )}
 
         {/* Rate Limit Warning */}
         {isRateLimited && (
@@ -853,7 +874,7 @@ export default function PocketExportApp() {
                           rel="noopener noreferrer"
                           className="text-xs text-gray-400 hover:text-red-400 transition-colors"
                         >
-                          <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" className="icon" style={{height: '24px', display: 'inline-block'}}><path fill-rule="evenodd" d="M1 4a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2zm2 0v2h18V4z" clip-rule="evenodd"></path><path fill-rule="evenodd" d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zm2 10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8H5z" clip-rule="evenodd"></path><path fill-rule="evenodd" d="M15.707 11.293a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414 0l-2-2a1 1 0 1 1 1.414-1.414L11 14.586l3.293-3.293a1 1 0 0 1 1.414 0" clip-rule="evenodd"></path></svg> 
+                          <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" className="icon" style={{height: '24px', display: 'inline-block'}}><path fillRule="evenodd" d="M1 4a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2zm2 0v2h18V4z" clipRule="evenodd"></path><path fillRule="evenodd" d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zm2 10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8H5z" clipRule="evenodd"></path><path fillRule="evenodd" d="M15.707 11.293a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414 0l-2-2a1 1 0 1 1 1.414-1.414L11 14.586l3.293-3.293a1 1 0 0 1 1.414 0" clipRule="evenodd"></path></svg> 
                           &nbsp;&nbsp;
                           Pocket ID: #<code>{article.savedId}</code>
                         </a>

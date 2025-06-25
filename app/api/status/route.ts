@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exportStore } from '@/lib/export-store';
 import { getDownloadStatus } from '@/lib/article-downloader';
-import { getSessionSizeInMB } from '@/lib/session-utils';
+import { getSessionSizeInMB, readPaymentData, updatePaymentData } from '@/lib/session-utils';
+import { stripe } from '@/lib/stripe';
 import { execSync } from 'child_process';
 
 export async function GET(request: NextRequest) {
@@ -71,6 +72,86 @@ export async function GET(request: NextRequest) {
     
     const downloadStatus = getDownloadStatus(sessionId, allArticles);
     const sessionSizeMB = getSessionSizeInMB(sessionId);
+    let paymentData = readPaymentData(sessionId);
+    
+    // Only check and sync payment status with Stripe if payment is not already completed
+    if (paymentData?.payment?.stripeSessionId && paymentData.payment.status !== 'completed') {
+      console.log(`Checking payment status for session ${sessionId}, current status: ${paymentData.payment.status}`);
+      try {
+        const stripeSession = await stripe.checkout.sessions.retrieve(
+          paymentData.payment.stripeSessionId
+        );
+        
+        console.log(`Stripe session ${paymentData.payment.stripeSessionId} status: ${stripeSession.status}, payment_status: ${stripeSession.payment_status}, payment_intent: ${stripeSession.payment_intent}`);
+        
+        // Check both session status and payment status
+        let isPaymentComplete = stripeSession.status === 'complete' || 
+                               stripeSession.payment_status === 'paid';
+        
+        // Always check the payment intent if available
+        if (stripeSession.payment_intent && !isPaymentComplete) {
+          try {
+            const paymentIntent = await stripe.paymentIntents.retrieve(stripeSession.payment_intent as string);
+            console.log(`Payment intent ${paymentIntent.id} status: ${paymentIntent.status}`);
+            
+            if (paymentIntent.status === 'succeeded' && paymentData.payment.status !== 'completed') {
+              console.log(`Payment intent succeeded, updating payment status for session ${sessionId}`);
+              
+              let chargeData = {};
+              // Retrieve charge information
+              if (paymentIntent.latest_charge) {
+                try {
+                  const charge = await stripe.charges.retrieve(paymentIntent.latest_charge as string);
+                  chargeData = {
+                    stripeChargeId: charge.id,
+                    receiptUrl: charge.receipt_url,
+                    receiptEmail: charge.receipt_email,
+                    customerId: charge.customer as string
+                  };
+                  console.log(`Retrieved charge ${charge.id} for verification`);
+                } catch (chargeError) {
+                  console.error('Error retrieving charge:', chargeError);
+                }
+              }
+              
+              paymentData = updatePaymentData(sessionId, {
+                hasUnlimitedAccess: true,
+                payment: {
+                  ...paymentData.payment,
+                  status: 'completed',
+                  stripePaymentIntentId: paymentIntent.id,
+                  amount: paymentIntent.amount || stripeSession.amount_total || 0,
+                  currency: paymentIntent.currency || stripeSession.currency || 'usd',
+                  completedAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  ...chargeData
+                }
+              });
+              console.log(`Payment verified via payment intent and updated for session ${sessionId}`);
+            }
+          } catch (piError) {
+            console.error('Error checking payment intent:', piError);
+          }
+        } else if (isPaymentComplete && paymentData.payment.status !== 'completed') {
+          console.log(`Updating payment status to completed for session ${sessionId}`);
+          paymentData = updatePaymentData(sessionId, {
+            hasUnlimitedAccess: true,
+            payment: {
+              ...paymentData.payment,
+              status: 'completed',
+              stripePaymentIntentId: stripeSession.payment_intent as string,
+              amount: stripeSession.amount_total || 0,
+              currency: stripeSession.currency || 'usd',
+              completedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          });
+          console.log(`Payment verified and updated for session ${sessionId}`);
+        }
+      } catch (error) {
+        console.error('Error checking Stripe payment status:', error);
+      }
+    }
     
     // Debug logging
     // console.log(`Status endpoint: returning ${allArticles.length} total articles for session ${sessionId}`);
@@ -78,12 +159,22 @@ export async function GET(request: NextRequest) {
       // console.log(`Download status for ${sessionId}: ${downloadStatus.completed}/${downloadStatus.total} completed`);
     // }
     
-    // Return session.json almost verbatim with articles added
-    return NextResponse.json({
+    // Strip sensitive auth data before sending to frontend
+    const sanitizedSession = {
       ...session,
+      auth: session.auth ? {
+        cookieString: '✅',
+        headers: '✅'
+      } : undefined
+    };
+    
+    // Return session.json with sensitive data stripped and articles added
+    return NextResponse.json({
+      ...sanitizedSession,
       articles: allArticles,
       downloadStatus,
-      sessionSizeMB
+      sessionSizeMB,
+      paymentData
     });
 
   } catch (error) {

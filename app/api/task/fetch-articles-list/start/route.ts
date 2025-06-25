@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
 import { exportStore } from '@/lib/export-store';
+import { hasValidPayment } from '@/lib/session-utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,19 +33,25 @@ export async function POST(request: NextRequest) {
 
     // Check if a fetch task is already running
     if (session.currentFetchTask?.status === 'running') {
-      return NextResponse.json(
-        { success: false, error: 'Fetch task is already running' },
-        { status: 409 }
-      );
+      // Silently return success - the UI will update via polling
+      return NextResponse.json({ 
+        success: true,
+        alreadyRunning: true,
+        pid: session.currentFetchTask.pid
+      });
     }
 
+    // Clear payment error if user has paid
+    const currentFetchTask = session.currentFetchTask;
+    const shouldClearError = currentFetchTask?.error?.includes('Payment required') && hasValidPayment(sessionId);
+    
     // Update fetch task status to running
     exportStore.updateFetchTask(sessionId, {
       status: 'running',
       startedAt: new Date(),
-      count: 0,
-      total: 0,
-      error: undefined,
+      count: currentFetchTask?.count || 0, // Preserve existing count
+      total: currentFetchTask?.total || 0, // Preserve existing total
+      error: shouldClearError ? undefined : currentFetchTask?.error,
       rateLimitedAt: undefined,
       rateLimitRetryAfter: undefined
     });

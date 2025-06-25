@@ -31,10 +31,12 @@ export async function POST(request: NextRequest) {
 
     // Check if a download task is already running
     if (session.currentDownloadTask?.status === 'running') {
-      return NextResponse.json(
-        { success: false, error: 'Download task is already running' },
-        { status: 409 }
-      );
+      // Silently return success - the UI will update via polling
+      return NextResponse.json({ 
+        success: true,
+        alreadyRunning: true,
+        pid: session.currentDownloadTask.pid
+      });
     }
 
     // Get all articles for the session

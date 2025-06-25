@@ -15,7 +15,8 @@
       "Bash(tsx test-full-query.ts:*)",
       "Bash(mkdir:*)",
       "Bash(cp:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }
