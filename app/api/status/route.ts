@@ -21,11 +21,35 @@ export async function GET(request: NextRequest) {
     let session = await exportStore.getSession(sessionId);
 
     if (!session) {
-      // Only log if it's not an old consumer key format (which we expect to fail)
-      // Consumer keys look like: 94110--6d5ff7a89d72c869766af0e0 or 459T7-c99KcH9T882115Y4fvj1qt72b
-      if (!sessionId.match(/^[\w\d]{5}-[\w-]+$/)) {
+      // Check if this is an old consumer key format
+      const isOldFormat = sessionId.match(/^[\w\d]{5}-[\w-]+$/);
+      
+      if (!isOldFormat) {
         console.log('Session not found:', sessionId);
       }
+      
+      // For old format sessions, return a special response that will cause the old frontend to redirect
+      if (isOldFormat) {
+        // Return a response that mimics a successful status but with no auth
+        // This will cause the old frontend to think it needs to re-authenticate
+        return NextResponse.json({
+          id: sessionId,
+          createdAt: new Date(),
+          lastModifiedAt: new Date(),
+          auth: null, // No auth will make old frontend show auth form
+          currentFetchTask: {
+            status: 'error',
+            error: 'Please refresh the page to use the new version',
+            count: 0,
+            total: 0
+          },
+          articles: [],
+          // Add a special flag that might trigger different behavior
+          requiresRefresh: true,
+          error: 'Session format outdated. Please refresh the page.',
+        });
+      }
+      
       return NextResponse.json(
         { error: 'Session not found' },
         { status: 404 }
