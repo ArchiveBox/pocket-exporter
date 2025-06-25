@@ -28,17 +28,20 @@ export async function GET(request: NextRequest) {
         console.log('Session not found:', sessionId);
       }
       
-      // For old format sessions, just return 404 to trigger redirect in old frontend
+      // For old format sessions, return empty session to trigger redirect
       if (isOldFormat) {
-        // The old frontend should have code like:
-        // if (statusResponse.status === 404) {
-        //   window.location.href = '/'
-        // }
-        // Don't log to avoid spam
-        return NextResponse.json(
-          { error: 'Session not found' },
-          { status: 404 }
-        );
+        // Return a response with no session ID - this might make the old frontend
+        // think it has no session and redirect to homepage
+        return NextResponse.json({
+          // No id field - might trigger redirect
+          auth: null,
+          currentFetchTask: null,
+          currentDownloadTask: null,
+          articles: [],
+          downloadStatus: null,
+          sessionSizeMB: 0,
+          paymentData: null
+        });
       }
       
       return NextResponse.json(
