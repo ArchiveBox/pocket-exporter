@@ -28,26 +28,17 @@ export async function GET(request: NextRequest) {
         console.log('Session not found:', sessionId);
       }
       
-      // For old format sessions, return a special response that will cause the old frontend to redirect
+      // For old format sessions, just return 404 to trigger redirect in old frontend
       if (isOldFormat) {
-        // Return a response that mimics a successful status but with no auth
-        // This will cause the old frontend to think it needs to re-authenticate
-        return NextResponse.json({
-          id: sessionId,
-          createdAt: new Date(),
-          lastModifiedAt: new Date(),
-          auth: null, // No auth will make old frontend show auth form
-          currentFetchTask: {
-            status: 'error',
-            error: 'Please refresh the page to use the new version',
-            count: 0,
-            total: 0
-          },
-          articles: [],
-          // Add a special flag that might trigger different behavior
-          requiresRefresh: true,
-          error: 'Session format outdated. Please refresh the page.',
-        });
+        // The old frontend should have code like:
+        // if (statusResponse.status === 404) {
+        //   window.location.href = '/'
+        // }
+        // Don't log to avoid spam
+        return NextResponse.json(
+          { error: 'Session not found' },
+          { status: 404 }
+        );
       }
       
       return NextResponse.json(
