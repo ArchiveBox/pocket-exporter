@@ -37,6 +37,7 @@ COPY --chown=nextjs:nextjs . .
 # Build the Next.js application with dummy env vars to prevent initialization errors
 ENV STRIPE_SECRET_KEY=dummy_key_for_build
 ENV STRIPE_WEBHOOK_SECRET=dummy_secret_for_build
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51RdpLdQBOyYpB6K9oCHmft77qXSjeOXW12WXsmrWn2Y1hUagC8d88ZmWgqIaJJ6RRT4IKTsg5UPGjuwkX3dEjPJg00UXzxqqlE
 RUN npm run build
 
 # Expose port
@@ -45,6 +46,10 @@ EXPOSE 3000
 # Set environment variables for Next.js to listen on all interfaces
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3000
+
+# Clear the dummy build-time secrets at runtime
+ENV STRIPE_SECRET_KEY=""
+ENV STRIPE_WEBHOOK_SECRET=""
 
 # Start the application
 CMD ["npm", "start"]
