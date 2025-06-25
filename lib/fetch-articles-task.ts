@@ -58,9 +58,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   const ARTICLES_DIR = path.join(SESSION_DIR, 'articles');
 
   // Create articles directory if it doesn't exist
-  if (!fs.existsSync(ARTICLES_DIR)) {
-    fs.mkdirSync(ARTICLES_DIR, { recursive: true });
-  }
+  await fs.promises.mkdir(ARTICLES_DIR, { recursive: true }).catch(() => {});
 
   // Build the GraphQL query - request ALL fields including readerSlug and article content
   const query = buildGraphQLQuery(`

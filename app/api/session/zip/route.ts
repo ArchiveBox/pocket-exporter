@@ -25,7 +25,9 @@ export async function GET(request: NextRequest) {
     }
 
     const sessionPath = path.join(process.cwd(), 'sessions', sessionId);
-    if (!fs.existsSync(sessionPath)) {
+    try {
+      await fs.promises.access(sessionPath);
+    } catch (e) {
       return NextResponse.json(
         { error: 'Session directory not found' },
         { status: 404 }

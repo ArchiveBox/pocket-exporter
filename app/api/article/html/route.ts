@@ -24,14 +24,15 @@ export async function GET(request: NextRequest) {
       'article.html'
     );
 
-    if (!fs.existsSync(articleHtmlPath)) {
+    let htmlContent: string;
+    try {
+      htmlContent = await fs.promises.readFile(articleHtmlPath, 'utf8');
+    } catch (e) {
       return NextResponse.json(
         { error: 'Article HTML not found' },
         { status: 404 }
       );
     }
-
-    const htmlContent = fs.readFileSync(articleHtmlPath, 'utf8');
 
     // Check if HTML is empty or too short (< 256 chars)
     if (!htmlContent || htmlContent.trim().length < 256) {
@@ -45,8 +46,9 @@ export async function GET(request: NextRequest) {
         'index.json'
       );
 
-      if (fs.existsSync(indexJsonPath)) {
-        const indexData = JSON.parse(fs.readFileSync(indexJsonPath, 'utf8'));
+      try {
+        const indexContent = await fs.promises.readFile(indexJsonPath, 'utf8');
+        const indexData = JSON.parse(indexContent);
         
         // Check if it's a video
         if (indexData.item?.hasVideo === 'IS_VIDEO' || indexData.item?.hasVideo === 'HAS_VIDEOS') {
@@ -190,6 +192,8 @@ export async function GET(request: NextRequest) {
             }
           });
         }
+      } catch (e) {
+        // index.json doesn't exist, continue with empty/short HTML
       }
     }
 

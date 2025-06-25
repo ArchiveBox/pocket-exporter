@@ -300,7 +300,7 @@ async function downloadArticleImages(sessionId: string, article: Article, savedI
   // Download all images
   for (const [key, imgData] of imageMap.entries()) {
     // Check if downloads were stopped
-    if (shouldStopDownload(sessionId)) {
+    if (await shouldStopDownload(sessionId)) {
       console.log('Image downloads stopped by user');
       break;
     }
@@ -368,7 +368,7 @@ async function downloadArticleContent(
   onlyImages = false
 ): Promise<void> {
   // Check if downloads were stopped
-  if (shouldStopDownload(sessionId)) {
+  if (await shouldStopDownload(sessionId)) {
     throw new Error('Stopped by user');
   }
   
@@ -417,7 +417,7 @@ async function downloadArticleContent(
     }
     
     // Check again if downloads were stopped before downloading
-    if (shouldStopDownload(sessionId)) {
+    if (await shouldStopDownload(sessionId)) {
       throw new Error('Stopped by user');
     }
     
@@ -655,10 +655,16 @@ export async function startArticleDownloads(
   let pendingCount = 0;
   let completedCount = 0;
   
-  articles.forEach(article => {
+  for (const article of articles) {
     // Check specifically for original.html, not article.html
     const originalHtmlPath = path.join(getArticleDir(sessionId, article.savedId), 'original.html');
-    const hasOriginalHtml = fs.existsSync(originalHtmlPath);
+    let hasOriginalHtml = false;
+    try {
+      await fs.promises.access(originalHtmlPath);
+      hasOriginalHtml = true;
+    } catch (e) {
+      // File doesn't exist
+    }
     
     if (hasOriginalHtml) {
       // Add to queue as completed, but mark for image check
@@ -675,7 +681,7 @@ export async function startArticleDownloads(
       });
       pendingCount++;
     }
-  });
+  }
   
   console.log(`Download queue: ${pendingCount} pending, ${completedCount} already completed`);
 
@@ -723,7 +729,7 @@ async function processExistingArticlesForImages(
   // Process articles sequentially to avoid overwhelming downloads
   for (const article of articlesWithHtml) {
     // Check if downloads were stopped
-    if (shouldStopDownload(sessionId)) {
+    if (await shouldStopDownload(sessionId)) {
       console.log('Image downloads stopped by user');
       break;
     }
@@ -732,15 +738,13 @@ async function processExistingArticlesForImages(
     const articleIndexPath = path.join(articlesDir, 'index.json');
     
     // Load article metadata to get image URLs
-    if (fs.existsSync(articleIndexPath)) {
-      try {
-        const articleData = JSON.parse(fs.readFileSync(articleIndexPath, 'utf8'));
-        // Download images from metadata
-        await downloadArticleImages(sessionId, article, articleData);
-      } catch (error: any) {
-        console.error(`Error processing images for article ${article.savedId}:`, error.message);
-        // Continue with next article even if one fails
-      }
+    try {
+      const articleContent = await fs.promises.readFile(articleIndexPath, 'utf8');
+      const articleData = JSON.parse(articleContent);
+      // Download images from metadata
+      await downloadArticleImages(sessionId, article, articleData);
+    } catch (error: any) {
+      // File doesn't exist or failed to parse/download, continue with next article
     }
   }
 }

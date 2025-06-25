@@ -40,14 +40,15 @@ export async function GET(
       );
     }
 
-    if (!fs.existsSync(imagePath)) {
+    let imageBuffer: Buffer;
+    try {
+      imageBuffer = await fs.promises.readFile(imagePath);
+    } catch (e) {
       return NextResponse.json(
         { error: 'Image not found' },
         { status: 404 }
       );
     }
-
-    const imageBuffer = fs.readFileSync(imagePath);
     const ext = path.extname(sanitizedFilename).toLowerCase();
     
     // Map file extensions to MIME types

@@ -8,7 +8,6 @@ interface ParsedAuth {
   cookies: Record<string, string>;
   cookieString: string;
   headers: Record<string, string>;
-  consumerKey?: string;
 }
 
 function parseFetchCode(fetchCode: string): ParsedAuth {
@@ -47,45 +46,6 @@ function parseFetchCode(fetchCode: string): ParsedAuth {
   if (!cookies.PHPSESSID || !cookies.AUTH_BEARER_default) {
     throw new Error('Missing required authentication cookies');
   }
-
-  // Try to extract consumer_key from URL first
-  let consumerKey: string | undefined;
-  
-  // Extract URL from the fetch request
-  const urlMatch = fetchCode.match(/fetch\s*\(\s*["']([^"']+)["']/);
-  if (urlMatch) {
-    const url = urlMatch[1];
-    // Look for consumer_key in URL parameters
-    const consumerKeyMatch = url.match(/consumer_key=([^&]+)/);
-    if (consumerKeyMatch) {
-      consumerKey = consumerKeyMatch[1];
-      console.log('Found consumer key in URL:', consumerKey);
-    }
-  }
-  
-  // If not found in URL, check for x-consumer-key header
-  if (!consumerKey && headers['x-consumer-key']) {
-    consumerKey = headers['x-consumer-key'];
-    console.log('Found consumer key in x-consumer-key header:', consumerKey);
-  }
-  
-  // If not found in headers, try to extract from the body
-  if (!consumerKey) {
-    const bodyMatch = fetchCode.match(/"body"\s*:\s*"([^"]+)"/);  
-    if (bodyMatch) {
-      try {
-        // Unescape the JSON string
-        const bodyStr = bodyMatch[1].replace(/\\"/g, '"');
-        const bodyData = JSON.parse(bodyStr);
-        consumerKey = bodyData.consumer_key;
-        if (consumerKey) {
-          console.log('Found consumer key in request body:', consumerKey);
-        }
-      } catch (e) {
-        // Ignore parse errors
-      }
-    }
-  }
   
   // Prepare response
   return {
@@ -93,8 +53,7 @@ function parseFetchCode(fetchCode: string): ParsedAuth {
     cookieString: cookieHeader,
     headers: Object.fromEntries(
       Object.entries(headers).filter(([key]) => key.toLowerCase() !== 'cookie')
-    ),
-    consumerKey
+    )
   };
 }
 
@@ -104,7 +63,6 @@ export async function POST(request: NextRequest) {
     
     let cookieString: string;
     let headers: Record<string, string>;
-    let consumerKey: string | undefined;
     const oldSessionId = body.oldSessionId; // Get the old session ID if updating
     
     // Check if we received a fetch code or already parsed data
@@ -113,12 +71,10 @@ export async function POST(request: NextRequest) {
       const parsed = parseFetchCode(body.fetchCode);
       cookieString = parsed.cookieString;
       headers = parsed.headers;
-      consumerKey = parsed.consumerKey;
     } else if (body.cookieString && body.headers) {
       // Already parsed data
       cookieString = body.cookieString;
       headers = body.headers;
-      consumerKey = body.consumerKey;
     } else {
       return NextResponse.json(
         { success: false, error: 'Missing required auth data' },
@@ -162,15 +118,16 @@ export async function POST(request: NextRequest) {
       
       try {
         // Check if old session exists and is a real directory
-        if (fs.existsSync(oldSessionPath) && fs.lstatSync(oldSessionPath).isDirectory()) {
+        const oldPathStats = await fs.promises.lstat(oldSessionPath).catch(() => null);
+        if (oldPathStats && oldPathStats.isDirectory()) {
           // Check if new session path already exists
-          if (fs.existsSync(newSessionPath)) {
-            const stats = fs.lstatSync(newSessionPath);
+          const newPathStats = await fs.promises.lstat(newSessionPath).catch(() => null);
+          if (newPathStats) {
             
-            if (stats.isSymbolicLink()) {
+            if (newPathStats.isSymbolicLink()) {
               // If it's already a symlink, remove it to recreate
-              fs.unlinkSync(newSessionPath);
-            } else if (stats.isDirectory()) {
+              await fs.promises.unlink(newSessionPath);
+            } else if (newPathStats.isDirectory()) {
               // If it's a real directory, don't overwrite it
               console.log(`Warning: ${newSessionPath} is a real directory, not creating symlink`);
               return NextResponse.json({ 
@@ -182,7 +139,7 @@ export async function POST(request: NextRequest) {
           }
           
           // Create symlink from new to old (new session points to old session data)
-          fs.symlinkSync(`./${oldSessionId}`, newSessionPath, 'dir');
+          await fs.promises.symlink(`./${oldSessionId}`, newSessionPath, 'dir');
           console.log(`Created symlink: ${sessionId} -> ${oldSessionId}`);
         } else {
           console.log(`Old session ${oldSessionId} does not exist or is not a directory`);
