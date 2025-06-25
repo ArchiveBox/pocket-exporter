@@ -204,7 +204,7 @@ class ExportStore {
           const indexPath = path.join(sessionDir, articleId, 'index.json');
           const articleData = await fs.promises.readFile(indexPath, 'utf8');
           const article = JSON.parse(articleData);
-          return enrichArticleWithFallbackImages(article, id);
+          return await enrichArticleWithFallbackImages(article, id);
         } catch (error) {
           console.error(`Failed to load article ${articleId}:`, error);
           return null;

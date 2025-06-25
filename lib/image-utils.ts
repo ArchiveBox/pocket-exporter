@@ -11,10 +11,12 @@ const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.svg', '.webp', '.tiff', '.g
 const MIN_SIZE = 16 * 1024; // 16KB
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
-export function findFallbackImages(articleDir: string): string[] {
+export async function findFallbackImages(articleDir: string): Promise<string[]> {
   const fallbackUrls: string[] = [];
   
-  if (!fs.existsSync(articleDir)) {
+  try {
+    await fs.promises.access(articleDir);
+  } catch (e) {
     return fallbackUrls;
   }
 
@@ -22,15 +24,15 @@ export function findFallbackImages(articleDir: string): string[] {
     const images: ImageInfo[] = [];
     
     // Recursively find all image files
-    function scanDirectory(dir: string) {
-      const files = fs.readdirSync(dir);
+    async function scanDirectory(dir: string) {
+      const files = await fs.promises.readdir(dir);
       
       for (const file of files) {
         const filePath = path.join(dir, file);
-        const stat = fs.statSync(filePath);
+        const stat = await fs.promises.stat(filePath);
         
         if (stat.isDirectory()) {
-          scanDirectory(filePath);
+          await scanDirectory(filePath);
         } else {
           const ext = path.extname(file).toLowerCase();
           if (IMAGE_EXTENSIONS.includes(ext) && stat.size > MIN_SIZE && stat.size < MAX_SIZE) {
@@ -44,7 +46,7 @@ export function findFallbackImages(articleDir: string): string[] {
       }
     }
     
-    scanDirectory(articleDir);
+    await scanDirectory(articleDir);
     
     // Sort by size (largest first)
     images.sort((a, b) => b.size - a.size);
@@ -63,9 +65,9 @@ export function findFallbackImages(articleDir: string): string[] {
   return fallbackUrls;
 }
 
-export function enrichArticleWithFallbackImages(article: any, sessionId: string): any {
+export async function enrichArticleWithFallbackImages(article: any, sessionId: string): Promise<any> {
   const articleDir = path.join(process.cwd(), 'sessions', sessionId, 'articles', article.savedId);
-  const fallbackImages = findFallbackImages(articleDir);
+  const fallbackImages = await findFallbackImages(articleDir);
   
   return {
     ...article,
