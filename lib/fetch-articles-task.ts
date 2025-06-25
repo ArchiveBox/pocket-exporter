@@ -130,7 +130,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
     // Check if we've hit the paywall limit
     if (!canFetchMoreArticles(sessionId, totalFetched)) {
       console.log('\n⚠️  Reached free tier limit of 100 articles. Payment required to continue.');
-      exportStore.updateFetchTask(sessionId, {
+      await exportStore.updateFetchTask(sessionId, {
         status: 'stopped',
         error: 'Payment required - reached 100 article limit',
         endedAt: new Date()
@@ -149,7 +149,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       console.log(`\nFetching page ${cursor ? `after cursor ${cursor}` : '(first page)'}...`);
       
       // Update fetch task status
-      exportStore.updateFetchTask(sessionId, {
+      await exportStore.updateFetchTask(sessionId, {
         currentID: cursor || 'first-page',
         cursor: cursor
       });
@@ -161,7 +161,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       // Check for authentication error
       if (isAuthError(response)) {
         console.error('\n❌ Authentication error detected. Your session has expired.');
-        exportStore.updateFetchTask(sessionId, {
+        await exportStore.updateFetchTask(sessionId, {
           status: 'error',
           error: 'Authentication expired',
           endedAt: new Date()
