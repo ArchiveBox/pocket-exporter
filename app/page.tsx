@@ -21,6 +21,14 @@ interface ParsedRequest {
   url: string
 }
 
+// Helper function to format dates
+function formatDate(date: string | Date | null | undefined): string {
+  if (!date) return 'Never';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return 'Invalid date';
+  return d.toLocaleString();
+}
+
 export default function PocketExportApp() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -608,9 +616,14 @@ export default function PocketExportApp() {
                   {sessionId && <div>Session ID: {sessionId}</div>}
                   <div className="flex gap-4 text-sm">
                     <span>Articles pulled (metadata + text): <strong>{articles.length}</strong>{!paymentData?.hasUnlimitedAccess && articles.length >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</span>
-                    <span>Original HTML downloaded: <strong>{downloadTask.count}/{articles.length}</strong></span>
+                    <span title="click the 📸 icon on individual articles below to include their images into the export (50MB limit per article)">Article images downloaded: <strong>{downloadTask.count}/{articles.length}</strong></span>
                     <span>Total export size: <strong>{sessionSizeMB.toFixed(2)} MB</strong></span>
                   </div>
+                  {sessionData && (
+                    <div className="flex gap-4 text-xs text-gray-500 mt-2">
+                      <span>Session updated: {formatDate(sessionData.lastModifiedAt)}</span>
+                    </div>
+                  )}
                 </div>
               </CardDescription>
             </CardHeader>
@@ -648,25 +661,34 @@ export default function PocketExportApp() {
                   />
                   
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">
-                      {fetchTask.status === 'running' || isRateLimited ? (
-                        <>
-                          Fetching articles... ({fetchTask.count}/{fetchTask.total > 0 ? (fetchTask.total > fetchTask.count ? `${fetchTask.total}+` : fetchTask.total) : '?'})
-                          {isRateLimited && (
-                            <span className="text-orange-600 font-medium">
-                              {' '}(Rate limited - retrying in {rateLimitRetryAfter}s)
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          {articles.length} total articles
-                          {fetchTask.status === 'completed' ? ' (completed)' :
-                           fetchTask.status === 'stopped' ? ' (stopped by user)' :
-                           fetchTask.status === 'error' ? ` (error: ${fetchTask.error})` : ''}
-                        </>
+                    <div>
+                      <span className="text-gray-600">
+                        {fetchTask.status === 'running' || isRateLimited ? (
+                          <>
+                            Fetching articles... ({fetchTask.count}/{fetchTask.total > 0 ? (fetchTask.total > fetchTask.count ? `${fetchTask.total}+` : fetchTask.total) : '?'})
+                            {isRateLimited && (
+                              <span className="text-orange-600 font-medium">
+                                {' '}(Rate limited - retrying in {rateLimitRetryAfter}s)
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {articles.length} total articles
+                            {fetchTask.status === 'completed' ? ' (completed)' :
+                             fetchTask.status === 'stopped' ? ' (stopped by user)' :
+                             fetchTask.status === 'error' ? ` (error: ${fetchTask.error})` : ''}
+                          </>
+                        )}
+                      </span>
+                      {(fetchTask.startedAt || fetchTask.endedAt) && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          {fetchTask.startedAt && <span>Started: {formatDate(fetchTask.startedAt)}</span>}
+                          {fetchTask.startedAt && fetchTask.endedAt && ' • '}
+                          {fetchTask.endedAt && <span>Ended: {formatDate(fetchTask.endedAt)}</span>}
+                        </div>
                       )}
-                    </span>
+                    </div>
                     <Button 
                       onClick={isExporting || isRateLimited ? stopFetchArticles : startFetchArticles}
                       size="sm"
@@ -926,8 +948,8 @@ export default function PocketExportApp() {
                           className="h-8 w-8 ml-2 cursor-pointer hover:opacity-80 transition-opacity" 
                           title={
                             downloadStatus?.articleStatus?.[article.savedId] === 'completed' 
-                              ? 'Click to download HTML' 
-                              : 'Click to download article content'
+                              ? 'Click to view saved article text in a new tab' 
+                              : 'Click to download article images and include them in the export (50MB limit per article)'
                           }
                           onClick={async () => {
                             if (downloadStatus?.articleStatus?.[article.savedId] === 'completed') {
@@ -987,7 +1009,7 @@ export default function PocketExportApp() {
                               ? '✓' 
                               : downloadStatus?.articleStatus?.[article.savedId] === 'downloading'
                               ? '⏬'
-                              : '⏳'}
+                              : '📸'}
                           </AvatarFallback>
                         </Avatar>
                       </div>
