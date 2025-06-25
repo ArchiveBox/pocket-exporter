@@ -58,6 +58,7 @@ export default function PocketExportApp() {
   const currentArticleCountRef = useRef(0)
   const filterInputRef = useRef<HTMLInputElement>(null)
   const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const sessionNotFoundRef = useRef(false)
 
   // Check for existing session in URL on mount
   useEffect(() => {
@@ -83,6 +84,9 @@ export default function PocketExportApp() {
       clearInterval(pollIntervalRef.current)
       pollIntervalRef.current = null
     }
+    
+    // Reset session not found flag when session changes
+    sessionNotFoundRef.current = false
     
     // Start polling if we have a sessionId
     if (sessionId) {
@@ -213,15 +217,35 @@ export default function PocketExportApp() {
   const startStatusPolling = (sessionId: string) => {
     // Function to fetch status
     const fetchStatus = async () => {
+      // Don't fetch if session was already not found
+      if (sessionNotFoundRef.current) {
+        return
+      }
+      
       try {
         const statusResponse = await fetch(`/api/status?session=${sessionId}`)
         
         // Check if session was not found
         if (statusResponse.status === 404) {
           console.log('Session not found, redirecting to homepage')
-          // Clear the session and redirect to homepage
+          sessionNotFoundRef.current = true
+          
+          // Stop polling immediately
+          if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current)
+            pollIntervalRef.current = null
+          }
+          
+          // Clear all state
           setSessionId('')
-          window.location.href = '/'
+          setArticles([])
+          setSessionData(null)
+          setDownloadStatus(null)
+          setSessionSizeMB(0)
+          setPaymentData(null)
+          
+          // Redirect to homepage
+          router.push('/')
           return
         }
         
