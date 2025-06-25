@@ -80,19 +80,21 @@ async function downloadFile(url: string, destPath: string, timeoutMs = 20000): P
     let timedOut = false;
     
     // Set up cleanup function
-    const cleanup = () => {
+    const cleanup = async () => {
       clearTimeout(downloadTimeout);
       file.close();
-      if (fs.existsSync(tempPath)) {
-        fs.unlinkSync(tempPath);
+      try {
+        await fs.promises.unlink(tempPath);
+      } catch (e) {
+        // File might not exist, ignore
       }
     };
     
     // Set up timeout
-    const cleanupAndReject = (error: Error) => {
+    const cleanupAndReject = async (error: Error) => {
       timedOut = true;
       request.destroy();
-      cleanup();
+      await cleanup();
       reject(error);
     };
     
@@ -106,7 +108,7 @@ async function downloadFile(url: string, destPath: string, timeoutMs = 20000): P
       // Handle redirects
       if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
         clearTimeout(downloadTimeout);
-        cleanup();
+        await cleanup();
         return downloadFile(response.headers.location, destPath, timeoutMs).then(resolve).catch(reject);
       }
       
@@ -123,10 +125,10 @@ async function downloadFile(url: string, destPath: string, timeoutMs = 20000): P
           file.close(() => {
             // Only move the file if download completed successfully
             try {
-              fs.renameSync(tempPath, destPath);
+              await fs.promises.rename(tempPath, destPath);
               resolve();
             } catch (err: any) {
-              cleanup();
+              await cleanup();
               reject(err);
             }
           });
@@ -207,13 +209,13 @@ async function shouldStopDownload(sessionId: string): Promise<boolean> {
 }
 
 // Helper function to get directory size
-function getDirectorySize(dirPath: string): number {
+async function getDirectorySize(dirPath: string): Promise<number> {
   let totalSize = 0;
   try {
-    const files = fs.readdirSync(dirPath);
+    const files = await fs.promises.readdir(dirPath);
     for (const file of files) {
       const filePath = path.join(dirPath, file);
-      const stats = fs.statSync(filePath);
+      const stats = await fs.promises.stat(filePath);
       if (stats.isFile()) {
         totalSize += stats.size;
       }
