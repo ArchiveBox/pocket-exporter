@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp, Trash2 } from "lucide-react"
+import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
 import { Article } from "@/types/article"
 import { ArticleImage } from "@/components/article-image"
 import { PaywallSection } from "@/components/PaywallSection"
@@ -52,6 +52,8 @@ export default function PocketExportApp() {
   const [isParsedRequestCollapsed, setIsParsedRequestCollapsed] = useState(false)
   const [sessionSizeMB, setSessionSizeMB] = useState<number>(0)
   const [paymentData, setPaymentData] = useState<any>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 24 // 24 items per page for a nice grid
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentArticleCountRef = useRef(0)
   const filterInputRef = useRef<HTMLInputElement>(null)
@@ -105,6 +107,7 @@ export default function PocketExportApp() {
       const value = filterInputRef.current?.value || '';
       setDebouncedFilterQuery(value);
       setFilterQuery(value); // Keep this for the clear button and results count
+      setCurrentPage(1); // Reset to first page when filtering
     }, 300);
   }, []);
 
@@ -134,6 +137,19 @@ export default function PocketExportApp() {
       return false;
     });
   }, [articles, debouncedFilterQuery]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredArticles.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedArticles = filteredArticles.slice(startIndex, endIndex);
+  
+  // Ensure current page is valid when articles change
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [currentPage, totalPages]);
 
   const steps = useMemo(() => [
     {
@@ -392,7 +408,12 @@ export default function PocketExportApp() {
             <i className="text-gray-400">Did you pay for Pocket Premium for years to get their "Permanent Library" feature?</i>
             <br/>
             ...<br/>
-            Well now <b><a href="https://getpocket.com/farewell" className="text-blue-600 hover:text-blue-700 font-large">Pocket is shutting down in October 2025 and deleting all user data</a></b> and it turns out they never intended to let you export any of those articles you paid to capture. So I reverse engineered their API and built this tool to export your complete account: article text, tags, metadata, titles, features images & videos, and more.
+            Well now <b><a href="https://getpocket.com/farewell" className="text-blue-600 hover:text-blue-700 font-large">Pocket is shutting down in October 2025 and deleting all user data</a></b> and it turns out they never intended to let you export any of those articles you paid to capture.
+            <br/>
+            <i className="text-gray-400">Many old sites have dissapeared forever, but Pocket still wont give us their snapshots!</i><br/>
+            <br/>
+            I reverse engineered their app APIs and built this tool to export everything that they (inexplicably) leave out of their own CSV export format: tags, ⭐️'s, their preserved copy of the original article text, featured images & videos, authors, and all other metadata.
+            <br/>
             <br/><br/>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
               <div className="text-center sm:text-left">
@@ -403,15 +424,6 @@ export default function PocketExportApp() {
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">💎 $15 one-time fee for full export</h3>
                 <p className="text-gray-600">Up to 50,000 articles + Permanent Library</p>
               </div>
-            </div>
-            <div className="text-sm text-gray-500 pt-4 border-t">
-              <a href="https://github.com/ArchiveBox/pocket-exporter" target="_blank" rel="noopener noreferrer" 
-                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
-                </svg>
-                Entirely open source on Github
-              </a>
             </div>
           </div>
         </div>
@@ -804,6 +816,7 @@ export default function PocketExportApp() {
                         }
                         setFilterQuery("");
                         setDebouncedFilterQuery("");
+                        setCurrentPage(1);
                       }}
                       className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 p-0"
                     >
@@ -814,12 +827,13 @@ export default function PocketExportApp() {
                 {filterQuery && (
                   <p className="text-sm text-gray-600 mt-2">
                     Showing {filteredArticles.length} of {articles.length} articles
+                    {totalPages > 1 && ` (page ${currentPage} of ${totalPages})`}
                   </p>
                 )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" style={{ contain: 'layout' }}>
-                {filteredArticles.map((article) => {
+                {paginatedArticles.map((article) => {
                   const isCurrentlyDownloading = downloadTask.currentID === article.savedId;
                   return (
                     <Card 
@@ -955,6 +969,85 @@ export default function PocketExportApp() {
                   )
                 })}
               </div>
+              
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6 pt-6 border-t">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </Button>
+                  
+                  <div className="flex items-center gap-1">
+                    {/* Show first page */}
+                    {currentPage > 3 && (
+                      <>
+                        <Button
+                          variant={currentPage === 1 ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(1)}
+                          className="w-10"
+                        >
+                          1
+                        </Button>
+                        {currentPage > 4 && <span className="px-1">...</span>}
+                      </>
+                    )}
+                    
+                    {/* Show current page and neighbors */}
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(page => {
+                        const distance = Math.abs(page - currentPage);
+                        return distance <= 2;
+                      })
+                      .map(page => (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                          className="w-10"
+                        >
+                          {page}
+                        </Button>
+                      ))}
+                    
+                    {/* Show last page */}
+                    {currentPage < totalPages - 2 && (
+                      <>
+                        {currentPage < totalPages - 3 && <span className="px-1">...</span>}
+                        <Button
+                          variant={currentPage === totalPages ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(totalPages)}
+                          className="w-10"
+                        >
+                          {totalPages}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  
+                  <span className="ml-4 text-sm text-gray-600">
+                    Page {currentPage} of {totalPages} ({filteredArticles.length} articles)
+                  </span>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -989,10 +1082,25 @@ export default function PocketExportApp() {
               Delete All Session Data
             </Button>
             <p className="text-xs text-gray-500 mt-2">
-              This will permanently delete all {articles.length} articles and session data
+              This will permanently delete all {articles.length} articles and session data. It will not affect your data on Pocket.
             </p>
           </div>
         )}
+
+        <br/>
+        <hr/>
+        <div className="text-sm text-gray-500 pt-4 border-t">
+          <a href="https://github.com/ArchiveBox/pocket-exporter" target="_blank" rel="noopener noreferrer" 
+            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+            </svg>
+            Open source on Github
+          </a>
+          <small className="text-gray-500" style={{float: 'right'}}>
+            Contact <code>X.com/ArchiveBoxApp</code> for questions.
+          </small>
+        </div>
       </div>
     </div>
   )
