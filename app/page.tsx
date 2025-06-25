@@ -616,7 +616,7 @@ export default function PocketExportApp() {
                   {sessionId && <div>Session ID: {sessionId}</div>}
                   <div className="flex gap-4 text-sm">
                     <span>Articles pulled (metadata + text): <strong>{articles.length}</strong>{!paymentData?.hasUnlimitedAccess && articles.length >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</span>
-                    <span title="click the 📸 icon on individual articles below to include their images into the export (50MB limit per article)">Article images downloaded: <strong>{downloadTask.count}/{articles.length}</strong></span>
+                    <span title="click the 📸 icon on individual articles below to include their live images and HTML into the export (50MB limit per article)">Article images downloaded: <strong>{downloadStatus?.completed || 0}/{articles.length}</strong></span>
                     <span>Total export size: <strong>{sessionSizeMB.toFixed(2)} MB</strong></span>
                   </div>
                   {sessionData && (
@@ -949,7 +949,7 @@ export default function PocketExportApp() {
                           title={
                             downloadStatus?.articleStatus?.[article.savedId] === 'completed' 
                               ? 'Click to view saved article text in a new tab' 
-                              : 'Click to download article images and include them in the export (50MB limit per article)'
+                              : 'Click to download live article HTML + images and include them in the export (50MB limit per article)'
                           }
                           onClick={async () => {
                             if (downloadStatus?.articleStatus?.[article.savedId] === 'completed') {
