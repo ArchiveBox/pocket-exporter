@@ -6,7 +6,7 @@ import { withTiming } from '@/lib/with-timing';
 export const GET = withTiming(async (
   request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
-) {
+) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session');
