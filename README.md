@@ -25,7 +25,7 @@ Mozilla is [shutting down Pocket in October 2025](https://getpocket.com/farewell
 
 1. Visit [https://pocket.archivebox.io](https://pocket-exporter.archivebox.io) (or your self-hosted instance)
 2. Follow the authentication steps to connect your Pocket account
-3. Start exporting (free for up to 100 articles, $15 one-time fee for unlimited)
+3. Start exporting (free for up to 100 articles, $8 one-time fee for unlimited)
 
 ### Self-Hosting with Docker
 

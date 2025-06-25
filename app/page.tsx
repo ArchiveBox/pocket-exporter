@@ -470,7 +470,7 @@ export default function PocketExportApp() {
                 <p className="text-gray-600">Test it out easily with no credit card</p>
               </div>
               <div className="text-center sm:text-left">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">💎 $15 one-time fee for full export</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">💎 $8 one-time fee for full export</h3>
                 <p className="text-gray-600">Up to 50,000 articles + Permanent Library</p>
               </div>
             </div>
