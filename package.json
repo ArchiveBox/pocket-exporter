@@ -4,11 +4,14 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "node scripts/warmup-api.js & next dev",
+    "dev:nowarmup": "next dev",
     "lint": "next lint",
     "start": "next start",
     "dev:prod": "next build && next start",
-    "dev:turbo": "next dev --turbo"
+    "dev:turbo": "next dev --turbo",
+    "watch": "NODE_OPTIONS='--max-old-space-size=8192' next dev",
+    "prod": "next build && NODE_ENV=production next start --port 3000"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -39,11 +42,14 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+    "@types/archiver": "^6.0.3",
+    "archiver": "^7.0.1",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
+    "dotenv": "^16.4.7",
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
@@ -58,9 +64,9 @@
     "sonner": "^1.7.1",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.20.3",
     "vaul": "^0.9.6",
-    "zod": "^3.24.1",
-    "dotenv": "^16.4.7"
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22",

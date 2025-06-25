@@ -13,6 +13,7 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "tsBuildInfoFile": ".next/.tsbuildinfo",
     "plugins": [
       {
         "name": "next"
@@ -23,5 +24,5 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "articles", ".env", ".claude", ".next", ".fetch_state.json"]
+  "exclude": ["node_modules", "articles", ".env", ".claude", ".next", ".fetch_state.json", "sessions", ".git"]
 }

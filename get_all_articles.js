@@ -2,20 +2,23 @@
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const { getHeaders, getGraphQLEndpoint, deepMerge, handleRateLimit, respectRateLimit, isRateLimitResponse, isAuthError } = require('./helpers');
+const { getHeaders, getGraphQLEndpoint, deepMerge, handleRateLimit, respectRateLimit, isRateLimitResponse, isAuthError, buildGraphQLQuery, GRAPHQL_FRAGMENTS, makeGraphQLRequest } = require('./helpers');
 
 // Parse command line arguments
 const args = process.argv.slice(2);
+const sessionId = args[0]; // First argument is the session ID
 const cursorArg = args.find(arg => arg.startsWith('--cursor='));
 const resumeCursor = cursorArg ? cursorArg.split('=')[1] : null;
+
+// Import export store to update session
+const { exportStore } = require('./lib/export-store');
 
 const ARTICLES_PER_REQUEST = 1000;
 
 // Show help if requested
-if (args.includes('--help') || args.includes('-h')) {
+if (args.includes('--help') || args.includes('-h') || !sessionId) {
   console.log(`
-Usage: node get_all_articles.js [options]
+Usage: node get_all_articles.js <sessionId> [options]
 
 Options:
   --cursor=CURSOR  Resume fetching from a specific cursor position
@@ -27,8 +30,9 @@ If interrupted, it will show the cursor to manually resume from.
   process.exit(0);
 }
 
-const ARTICLES_DIR = path.join(__dirname, 'articles');
-const STATE_FILE = path.join(__dirname, '.fetch_state.json');
+const SESSION_DIR = path.join(__dirname, 'sessions', sessionId);
+const ARTICLES_DIR = path.join(SESSION_DIR, 'articles');
+const STATE_FILE = path.join(SESSION_DIR, '.fetch_state.json');
 
 // Create articles directory if it doesn't exist
 if (!fs.existsSync(ARTICLES_DIR)) {
@@ -71,7 +75,7 @@ function clearState() {
 }
 
 // Use the exact query from the curl example
-const query = `
+const query = buildGraphQLQuery(`
   query GetSavedItems(
     $filter: SavedItemsFilter
     $sort: SavedItemsSort
@@ -138,105 +142,15 @@ const query = `
       }
     }
   }
-  
-  fragment SavedItemDetails on SavedItem {
-    _createdAt
-    _updatedAt
-    title
-    url
-    savedId: id
-    status
-    isFavorite
-    favoritedAt
-    isArchived
-    archivedAt
-    tags {
-      id
-      name
-    }
-    annotations {
-      highlights {
-        id
-        quote
-        patch
-        version
-        _createdAt
-        _updatedAt
-        note {
-          text
-          _createdAt
-          _updatedAt
-        }
-      }
-    }
-  }
+`, ['SavedItemDetails', 'ItemPreview']);
 
-  
-  fragment ItemPreview on PocketMetadata {
-    ... on ItemSummary {
-      previewId: id
-      id
-      image {
-        caption
-        credit
-        url
-        cachedImages(imageOptions: [{ id: "WebPImage", fileType: WEBP, width: 640 }]) {
-          url
-          id
-        }
-      }
-      excerpt
-      title
-      authors {
-        name
-      }
-      domain {
-        name
-      }
-      datePublished
-      url
-    }
-    ... on OEmbed {
-      previewId: id
-      id
-      image {
-        caption
-        credit
-        url
-        cachedImages(imageOptions: [{ id: "WebPImage", fileType: WEBP, width: 640 }]) {
-          url
-          id
-        }
-      }
-      excerpt
-      title
-      authors {
-        name
-      }
-      domain {
-        name
-      }
-      datePublished
-      url
-      htmlEmbed
-      type
-    }
-  }
-`;
-
-async function makeGraphQLRequest(variables, debug = false) {
-  const postData = JSON.stringify({
-    query: query,
-    operationName: "getItemsUnread",
-    variables: variables
-  });
-
-  const headers = getHeaders({
-    'content-length': Buffer.byteLength(postData),
+async function makeGraphQLRequestWithDebug(variables, debug = false) {
+  const additionalHeaders = {
     'referer': 'https://getpocket.com/saves?src=navbar'
-  });
+  };
 
   if (debug) {
+    const headers = getHeaders(additionalHeaders);
     console.log('\nDebug - Request headers:');
     Object.entries(headers).forEach(([key, value]) => {
       if (key === 'cookie') {
@@ -250,34 +164,7 @@ async function makeGraphQLRequest(variables, debug = false) {
     });
   }
 
-  const options = {
-    hostname: 'getpocket.com',
-    path: getGraphQLEndpoint(),
-    method: 'POST',
-    headers: headers
-  };
-
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(data));
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-    
-    req.on('error', reject);
-    req.write(postData);
-    req.end();
-  });
+  return makeGraphQLRequest(query, variables, "getItemsUnread", additionalHeaders);
 }
 
 async function getAllArticles() {
@@ -288,28 +175,7 @@ async function getAllArticles() {
   let articlesUpdated = 0;
   let retryCount = 0;
   const maxRetries = 100;
-  let isInterrupted = false;
 
-  // Handle graceful shutdown
-  const shutdown = () => {
-    console.log('\n\nReceived interrupt signal. Saving progress...');
-    isInterrupted = true;
-    if (cursor) {
-      saveState({
-        cursor,
-        totalFetched,
-        articlesCreated,
-        articlesUpdated,
-        lastSaved: new Date().toISOString()
-      });
-      console.log(`\nProgress saved. To resume from cursor ${cursor}, run:`);
-      console.log(`node get_all_articles.js --cursor=${cursor}`);
-    }
-    process.exit(0);
-  };
-
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
 
   // Priority: command line arg > saved state > start from beginning
   if (resumeCursor) {
@@ -329,7 +195,7 @@ async function getAllArticles() {
     }
   }
 
-  while (hasNextPage && !isInterrupted) {
+  while (hasNextPage) {
     const variables = {
       filter: { statuses: ["UNREAD", "ARCHIVED"] },
       sort: { sortBy: "CREATED_AT", sortOrder: "DESC" },
@@ -346,7 +212,7 @@ async function getAllArticles() {
       
       console.log(`\nFetching page ${cursor ? `after cursor ${cursor}` : '(first page)'}...`);
       // Enable debug on first request to see headers
-      const response = await makeGraphQLRequest(variables, !cursor);
+      const response = await makeGraphQLRequestWithDebug(variables, !cursor);
       
       // Always log response if there are errors
       if (response.errors) {

@@ -62,15 +62,10 @@ function isObject(obj) {
 
 // Extract reader slug from various sources
 function extractReaderSlug(articleData) {
-  // Try to get readerSlug from various sources
+  // Try to get readerSlug from item first (preferred)
   let readerSlug = articleData.item?.readerSlug;
   
-  // If no readerSlug, try to use shareId which might be the full slug
-  if (!readerSlug && articleData.item?.shareId) {
-    readerSlug = articleData.item.shareId;
-  }
-  
-  // If still no slug, use the savedId
+  // Fall back to savedId if no readerSlug is available
   if (!readerSlug && articleData.savedId) {
     readerSlug = articleData.savedId;
   }
@@ -162,6 +157,243 @@ function resetBackoff() {
 const PHPSESSID = process.env.PHPSESSID || '';
 const AUTH_BEARER = process.env.AUTH_BEARER_DEFAULT || '';
 
+// GraphQL Fragments
+const GRAPHQL_FRAGMENTS = {
+  SavedItemDetails: `
+    fragment SavedItemDetails on SavedItem {
+      _createdAt
+      _updatedAt
+      title
+      url
+      savedId: id
+      status
+      isFavorite
+      favoritedAt
+      isArchived
+      archivedAt
+      tags {
+        id
+        name
+      }
+      annotations {
+        highlights {
+          id
+          quote
+          patch
+          version
+          _createdAt
+          _updatedAt
+          note {
+            text
+            _createdAt
+            _updatedAt
+          }
+        }
+      }
+    }
+  `,
+  
+  ItemDetails: `
+    fragment ItemDetails on Item {
+      isArticle
+      title
+      shareId: id
+      itemId
+      readerSlug
+      resolvedId
+      resolvedUrl
+      domain
+      domainMetadata {
+        name
+      }
+      excerpt
+      hasImage
+      hasVideo
+      images {
+        caption
+        credit
+        height
+        imageId
+        src
+        width
+      }
+      videos {
+        vid
+        videoId
+        type
+        src
+      }
+      topImageUrl
+      timeToRead
+      givenUrl
+      collection {
+        imageUrl
+        intro
+        title
+        excerpt
+      }
+      authors {
+        id
+        name
+        url
+      }
+      datePublished
+      syndicatedArticle {
+        slug
+        publisher {
+          name
+          url
+        }
+      }
+    }
+  `,
+  
+  ItemPreview: `
+    fragment ItemPreview on PocketMetadata {
+      ... on ItemSummary {
+        previewId: id
+        id
+        image {
+          caption
+          credit
+          url
+          cachedImages(imageOptions: [{ id: "WebPImage", fileType: WEBP, width: 640 }]) {
+            url
+            id
+          }
+        }
+        excerpt
+        title
+        authors {
+          name
+        }
+        domain {
+          name
+        }
+        datePublished
+        url
+      }
+      ... on OEmbed {
+        previewId: id
+        id
+        image {
+          caption
+          credit
+          url
+          cachedImages(imageOptions: [{ id: "WebPImage", fileType: WEBP, width: 640 }]) {
+            url
+            id
+          }
+        }
+        excerpt
+        title
+        authors {
+          name
+        }
+        domain {
+          name
+        }
+        datePublished
+        url
+        htmlEmbed
+        type
+      }
+    }
+  `
+};
+
+// Common GraphQL query builder
+function buildGraphQLQuery(queryBody, fragments = []) {
+  const fragmentsStr = fragments
+    .map(fragmentName => GRAPHQL_FRAGMENTS[fragmentName] || '')
+    .filter(Boolean)
+    .join('\n');
+  
+  return `${queryBody}\n${fragmentsStr}`;
+}
+
+// Common article directory path helper
+function getArticleDir(sessionId, articleId) {
+  return path.join(process.cwd(), 'sessions', sessionId, 'articles', articleId);
+}
+
+// Common article HTML path helper
+function getArticleHtmlPath(sessionId, articleId) {
+  return path.join(getArticleDir(sessionId, articleId), 'article.html');
+}
+
+// Check if article is already downloaded
+function isArticleDownloaded(sessionId, articleId) {
+  const articleHtmlPath = getArticleHtmlPath(sessionId, articleId);
+  return fs.existsSync(articleHtmlPath);
+}
+
+// Common error response handler for API routes
+function createErrorResponse(message, statusCode = 500) {
+  return new Response(
+    JSON.stringify({ error: message }),
+    { 
+      status: statusCode,
+      headers: { 'Content-Type': 'application/json' }
+    }
+  );
+}
+
+// Common success response handler for API routes
+function createSuccessResponse(data, statusCode = 200) {
+  return new Response(
+    JSON.stringify(data),
+    { 
+      status: statusCode,
+      headers: { 'Content-Type': 'application/json' }
+    }
+  );
+}
+
+// Common GraphQL request function
+async function makeGraphQLRequest(query, variables, operationName, additionalHeaders = {}) {
+  const https = require('https');
+  const postData = JSON.stringify({
+    query: query,
+    operationName: operationName,
+    variables: variables
+  });
+
+  const headers = getHeaders({
+    'content-length': Buffer.byteLength(postData).toString(),
+    ...additionalHeaders
+  });
+
+  const options = {
+    hostname: 'getpocket.com',
+    path: getGraphQLEndpoint(),
+    method: 'POST',
+    headers: headers
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    
+    req.on('error', reject);
+    req.write(postData);
+    req.end();
+  });
+}
+
 module.exports = {
   CONSUMER_KEY,
   PHPSESSID,
@@ -177,5 +409,13 @@ module.exports = {
   isAuthError,
   getCurrentBackoff,
   increaseBackoff,
-  resetBackoff
+  resetBackoff,
+  GRAPHQL_FRAGMENTS,
+  buildGraphQLQuery,
+  getArticleDir,
+  getArticleHtmlPath,
+  isArticleDownloaded,
+  createErrorResponse,
+  createSuccessResponse,
+  makeGraphQLRequest
 };

@@ -1,25 +1,17 @@
 "use client"
 
-import { useState, useRef, useMemo } from "react"
+import { useState, useRef, useMemo, useEffect, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
-import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle } from "lucide-react"
-
-interface Article {
-  id: string
-  title: string
-  url: string
-  tags: string[]
-  featured_image?: string
-  added_at: string
-  domain?: string
-  excerpt?: string
-  time_to_read?: number
-}
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp } from "lucide-react"
+import { Article } from "@/types/article"
+import { ArticleImage } from "@/components/article-image"
 
 interface ParsedRequest {
   cookies: Record<string, string>
@@ -28,28 +20,98 @@ interface ParsedRequest {
 }
 
 export default function PocketExportApp() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [currentStep, setCurrentStep] = useState(1)
   const [fetchRequest, setFetchRequest] = useState("")
-  const [parsedRequest, setParsedRequest] = useState<ParsedRequest | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
+  const [sessionData, setSessionData] = useState<any>(null)
+  // Derived state from session data
+  const parsedRequest = sessionData?.auth ? {
+    url: 'https://getpocket.com/graphql',
+    headers: sessionData.auth.headers || {},
+    cookies: sessionData.auth.cookies || {},
+  } : null
+  const authData = sessionData?.auth || null
+  const fetchTask = sessionData?.currentFetchTask || { status: 'idle', count: 0, total: 0 }
+  const downloadTask = sessionData?.currentDownloadTask || { status: 'idle', count: 0, total: 0 }
+  const isExporting = fetchTask.status === 'running'
+  const isDownloading = downloadTask.status === 'running'
+  const isRateLimited = !!fetchTask.rateLimitedAt
+  const rateLimitRetryAfter = fetchTask.rateLimitRetryAfter || null
+  const isDownloadRateLimited = !!downloadTask.rateLimitedAt
+  const downloadRateLimitRetryAfter = downloadTask.rateLimitRetryAfter || null
+  const exportProgress = fetchTask.total > 0 ? Math.round((fetchTask.count / fetchTask.total) * 100) : 0
   const [articles, setArticles] = useState<Article[]>([])
-  const [exportProgress, setExportProgress] = useState(0)
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [authData, setAuthData] = useState<{ cookieString: string; headers: Record<string, string> } | null>(null)
   const [filterQuery, setFilterQuery] = useState("")
+  const [debouncedFilterQuery, setDebouncedFilterQuery] = useState("");
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set())
-  const [isRateLimited, setIsRateLimited] = useState(false)
-  const [rateLimitRetryAfter, setRateLimitRetryAfter] = useState<number | null>(null)
+  const [downloadStatus, setDownloadStatus] = useState<{ total: number; completed: number; downloading: number; errors: number; articleStatus: Record<string, 'pending' | 'downloading' | 'completed' | 'error'> } | null>(null)
+  const [isParsedRequestCollapsed, setIsParsedRequestCollapsed] = useState(false)
+  const [sessionSizeMB, setSessionSizeMB] = useState<number>(0)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentArticleCountRef = useRef(0)
+  const filterInputRef = useRef<HTMLInputElement>(null)
+  const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Check for existing session in URL on mount
+  useEffect(() => {
+    const urlSessionId = searchParams.get('session')
+    if (urlSessionId && !sessionId) {
+      setSessionId(urlSessionId)
+    }
+  }, [searchParams])
+
+  // Update URL when session ID changes
+  useEffect(() => {
+    if (sessionId) {
+      const params = new URLSearchParams(searchParams.toString())
+      params.set('session', sessionId)
+      router.push(`?${params.toString()}`)
+    }
+  }, [sessionId, router, searchParams])
+  
+  // Start polling on mount and whenever sessionId changes
+  useEffect(() => {
+    // Clear any existing interval
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+    
+    // Start polling if we have a sessionId
+    if (sessionId) {
+      startStatusPolling(sessionId)
+    }
+    
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+    }
+  }, [sessionId])
+
+  // Handle filter input changes
+  const handleFilterChange = useCallback(() => {
+    if (filterTimeoutRef.current) {
+      clearTimeout(filterTimeoutRef.current);
+    }
+    
+    filterTimeoutRef.current = setTimeout(() => {
+      const value = filterInputRef.current?.value || '';
+      setDebouncedFilterQuery(value);
+      setFilterQuery(value); // Keep this for the clear button and results count
+    }, 300);
+  }, []);
 
   // Filter articles based on search query
   const filteredArticles = useMemo(() => {
-    if (!filterQuery.trim()) {
+    if (!debouncedFilterQuery.trim()) {
       return articles;
     }
 
-    const query = filterQuery.toLowerCase();
+    const query = debouncedFilterQuery.toLowerCase();
     return articles.filter(article => {
       // Search in title
       if (article.title.toLowerCase().includes(query)) {
@@ -62,15 +124,15 @@ export default function PocketExportApp() {
       }
       
       // Search in tags
-      if (article.tags.some(tag => tag.toLowerCase().includes(query))) {
+      if (article.tags.some(tag => tag.name.toLowerCase().includes(query))) {
         return true;
       }
       
       return false;
     });
-  }, [articles, filterQuery]);
+  }, [articles, debouncedFilterQuery]);
 
-  const steps = [
+  const steps = useMemo(() => [
     {
       title: "Login to Pocket",
       description: "Open Pocket in a new tab and log in to your account",
@@ -96,11 +158,11 @@ export default function PocketExportApp() {
       description: "Paste the request below and start the export process",
       icon: <Download className="w-5 h-5" />,
     },
-  ]
+  ], [])
 
-  const handleParseFetch = async () => {
+  const savePocketAuth = async () => {
     try {
-      const response = await fetch('/api/parse-fetch', {
+      const response = await fetch('/api/task/save-pocket-auth', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -111,128 +173,171 @@ export default function PocketExportApp() {
       const data = await response.json()
 
       if (data.success) {
-        setAuthData(data.data)
-        setParsedRequest({
-          url: 'https://getpocket.com/graphql',
-          headers: data.data.headers,
-          cookies: data.data.cookies,
-        })
+        setSessionId(data.sessionId)
         setCurrentStep(5)
+        setIsParsedRequestCollapsed(true)
+        // Clear the fetch request input
+        setFetchRequest('')
       } else {
         alert(`Error: ${data.error}`)
       }
     } catch (error) {
-      alert('Failed to parse fetch request')
+      alert('Failed to save authentication')
     }
   }
 
-  const startExport = async () => {
-    if (!authData) return
+  const startStatusPolling = (sessionId: string) => {
+    // Function to fetch status
+    const fetchStatus = async () => {
+      try {
+        const statusResponse = await fetch(`/api/export/status?sessionId=${sessionId}`)
+        const statusData = await statusResponse.json()
 
-    setIsExporting(true)
-    setExportProgress(0)
-    setArticles([])
-    currentArticleCountRef.current = 0
+        // Update the entire session data
+        setSessionData(statusData)
+        
+        // Update download status only if it has valid values and has changed
+        if (statusData.downloadStatus && statusData.downloadStatus.total >= 0) {
+          setDownloadStatus(prevStatus => {
+            // Only update if the new status makes sense and has changed
+            if (!prevStatus || 
+                (statusData.downloadStatus.total > 0 && 
+                 (prevStatus.completed !== statusData.downloadStatus.completed ||
+                  prevStatus.downloading !== statusData.downloadStatus.downloading ||
+                  prevStatus.total !== statusData.downloadStatus.total))) {
+              return statusData.downloadStatus;
+            }
+            // Keep previous status if new one seems invalid or unchanged
+            return prevStatus;
+          })
+        }
+        
+        // Update session size
+        if (typeof statusData.sessionSizeMB === 'number') {
+          setSessionSizeMB(statusData.sessionSizeMB)
+        }
+
+        // Update step when we have auth
+        if (statusData.auth && currentStep < 5) {
+          setCurrentStep(5)
+          setIsParsedRequestCollapsed(true)
+        }
+
+        // Update articles with the full list from the server
+        if (statusData.articles) {
+          setArticles(statusData.articles);
+          currentArticleCountRef.current = statusData.articles.length;
+        }
+      } catch (error) {
+        console.error('Status polling error:', error)
+      }
+    }
+    
+    // Immediately fetch once
+    fetchStatus()
+    
+    // Then set up the interval
+    const interval = setInterval(fetchStatus, 2000) // Poll every 2 seconds
+    pollIntervalRef.current = interval
+  }
+
+  const startDownloadArticles = async () => {
+    if (!sessionId || articles.length === 0) return
 
     try {
-      // Start the export process
-      const startResponse = await fetch('/api/export/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(authData),
+      const response = await fetch(`/api/task/download-articles/start?sessionId=${sessionId}`, {
+        method: 'POST'
       })
-
-      const startData = await startResponse.json()
-
-      if (!startData.success) {
-        alert(`Error starting export: ${startData.error}`)
-        setIsExporting(false)
-        return
-      }
-
-      setSessionId(startData.sessionId)
-
-      // Poll for status updates
-      const interval = setInterval(async () => {
-        try {
-          const statusResponse = await fetch(
-            `/api/export/status?sessionId=${startData.sessionId}&lastFetchedCount=${currentArticleCountRef.current}`
-          )
-          const statusData = await statusResponse.json()
-
-          if (statusData.error && statusData.status !== 'error') {
-            console.error('Export error:', statusData.error)
-          }
-
-          // Update progress
-          setExportProgress(statusData.progress || 0)
-
-          // Check for rate limiting
-          if (statusData.status === 'rate-limited') {
-            setIsRateLimited(true)
-            setRateLimitRetryAfter(statusData.rateLimitRetryAfter || 60)
-          } else if (isRateLimited && statusData.status === 'running') {
-            // Rate limit has been lifted
-            setIsRateLimited(false)
-            setRateLimitRetryAfter(null)
-          }
-
-          // Add new articles
-          if (statusData.newArticles && statusData.newArticles.length > 0) {
-            setArticles((prev) => {
-              // Create a map to track unique articles by ID
-              const articleMap = new Map(prev.map(article => [article.id, article]))
-              
-              // Add new articles, overwriting any duplicates
-              statusData.newArticles.forEach((article: Article) => {
-                articleMap.set(article.id, article)
-              })
-              
-              const updated = Array.from(articleMap.values())
-              currentArticleCountRef.current = updated.length
-              return updated
-            })
-          }
-
-          // Check if export is complete
-          if (statusData.status === 'completed') {
-            clearInterval(interval)
-            setIsExporting(false)
-            setIsRateLimited(false)
-            setRateLimitRetryAfter(null)
-            setExportProgress(100)
-            pollIntervalRef.current = null
-          } else if (statusData.status === 'error') {
-            clearInterval(interval)
-            setIsExporting(false)
-            setIsRateLimited(false)
-            setRateLimitRetryAfter(null)
-            pollIntervalRef.current = null
-            alert(`Export failed: ${statusData.error}`)
-          }
-        } catch (error) {
-          console.error('Status polling error:', error)
-        }
-      }, 2000) // Poll every 2 seconds
       
-      pollIntervalRef.current = interval
+      const data = await response.json()
+      
+      if (!data.success) {
+        alert(`Error: ${data.error}`)
+      }
     } catch (error) {
-      console.error('Export error:', error)
-      alert('Failed to start export')
-      setIsExporting(false)
+      alert('Failed to start downloading articles')
     }
   }
 
+  const stopFetchArticles = async () => {
+    if (!sessionId) return
+
+    try {
+      const response = await fetch(`/api/task/fetch-articles-list/stop?sessionId=${sessionId}`, {
+        method: 'POST'
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      
+      if (!data.success) {
+        alert(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Stop fetch error:', error)
+      alert(`Failed to stop fetching articles: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const stopDownloadArticles = async () => {
+    if (!sessionId) return
+
+    try {
+      const response = await fetch(`/api/task/download-articles/stop?sessionId=${sessionId}`, {
+        method: 'POST'
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      
+      if (!data.success) {
+        alert(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      console.error('Stop download error:', error)
+      alert(`Failed to stop downloading articles: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const startFetchArticles = async () => {
+    if (!sessionId) {
+      alert('No session found. Please paste your fetch request first.')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/task/fetch-articles-list/start?sessionId=${sessionId}`, {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        alert(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      alert('Failed to start fetching articles')
+    }
+  }
+
+
   // Cleanup interval on unmount
-  if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', () => {
+  useEffect(() => {
+    return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
       }
-    })
-  }
+      if (filterTimeoutRef.current) {
+        clearTimeout(filterTimeoutRef.current)
+      }
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -242,13 +347,14 @@ export default function PocketExportApp() {
           <p className="text-lg text-gray-600">Export your saved articles from Mozilla Pocket</p>
         </div>
 
+
         {/* Steps Guide */}
         <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Export Process</CardTitle>
-            <CardDescription>Follow these steps to export your Pocket data</CardDescription>
-          </CardHeader>
-          <CardContent>
+            <CardHeader>
+              <CardTitle>Export Process</CardTitle>
+              <CardDescription>Follow these steps to export your Pocket data</CardDescription>
+            </CardHeader>
+            <CardContent>
             <div className="space-y-4">
               {steps.map((step, index) => (
                 <div key={index} className="flex items-start space-x-4">
@@ -298,7 +404,7 @@ export default function PocketExportApp() {
                 onChange={(e) => setFetchRequest(e.target.value)}
                 className="min-h-[200px] font-mono text-sm"
               />
-              <Button onClick={handleParseFetch} disabled={!fetchRequest.trim()} className="w-full">
+              <Button onClick={savePocketAuth} disabled={!fetchRequest.trim()} className="w-full">
                 Parse Request
               </Button>
             </CardContent>
@@ -308,11 +414,49 @@ export default function PocketExportApp() {
         {/* Parsed Request Display */}
         {parsedRequest && (
           <Card className="mb-8">
-            <CardHeader>
-              <CardTitle>Parsed Request Data</CardTitle>
-              <CardDescription>Extracted cookies and headers from your request</CardDescription>
+            <CardHeader 
+              className="cursor-pointer"
+              onClick={() => setIsParsedRequestCollapsed(!isParsedRequestCollapsed)}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Parsed Request Data</CardTitle>
+                  <CardDescription>
+                    {isParsedRequestCollapsed 
+                      ? "Click to expand and update authentication" 
+                      : "Extracted cookies and headers from your request"}
+                  </CardDescription>
+                </div>
+                <Button variant="ghost" size="sm">
+                  {isParsedRequestCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            {!isParsedRequestCollapsed && (
+              <CardContent className="space-y-4">
+              {sessionId && (
+                <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <p className="text-sm text-yellow-800 mb-2">
+                    To update authentication cookies for this session, paste a new fetch request:
+                  </p>
+                  <div className="space-y-2">
+                    <Textarea
+                      placeholder="Paste new fetch request here..."
+                      value={fetchRequest}
+                      onChange={(e) => setFetchRequest(e.target.value)}
+                      className="min-h-[100px] font-mono text-sm"
+                    />
+                    <Button 
+                      onClick={savePocketAuth} 
+                      disabled={!fetchRequest.trim()} 
+                      size="sm"
+                      variant="outline"
+                    >
+                      Update Authentication
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div>
                 <h4 className="font-medium mb-2">URL:</h4>
                 <code className="block p-2 bg-gray-100 rounded text-sm break-all">{parsedRequest.url}</code>
@@ -332,31 +476,155 @@ export default function PocketExportApp() {
                 </pre>
               </div>
 
-              <Button onClick={startExport} disabled={isExporting} className="w-full" size="lg">
-                {isExporting ? "Fetching Articles..." : "Fetch Articles"}
-              </Button>
+              {!sessionId && (
+                <Button onClick={startFetchArticles} disabled={isExporting} className="w-full" size="lg">
+                  {isExporting ? "Fetching Articles..." : "Fetch Article List"}
+                </Button>
+              )}
             </CardContent>
+            )}
           </Card>
         )}
 
-        {/* Export Progress */}
-        {isExporting && (
-          <Card className="mb-8">
+        {/* Session Status / Resume Button */}
+        <Card className="mb-8">
             <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Clock className="w-5 h-5" />
-                <span>Export in Progress</span>
-              </CardTitle>
+              <CardTitle>Export Progress</CardTitle>
+              <CardDescription>
+                <div className="space-y-1">
+                  {sessionId && <div>Session ID: {sessionId}</div>}
+                  <div className="flex gap-4 text-sm">
+                    <span>Articles fetched: <strong>{articles.length}</strong></span>
+                    <span>Content downloaded: <strong>{downloadTask.count}/{articles.length}</strong></span>
+                    <span>Total size: <strong>{sessionSizeMB.toFixed(2)} MB</strong></span>
+                  </div>
+                </div>
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <Progress value={exportProgress} className="w-full" />
-              <p className="text-sm text-gray-600 mt-2">
-                Fetching your articles... {exportProgress}% complete
-                {articles.length > 0 && ` (${articles.length} articles fetched)`}
-              </p>
+              <div className="space-y-6">
+                {/* Article Fetching Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium">Article List Fetching</h4>
+                    {(isExporting || isRateLimited) && <Clock className="w-4 h-4 animate-pulse text-gray-500" />}
+                  </div>
+                  
+                  {/* Article fetch progress bar */}
+                  <Progress 
+                    value={fetchTask.total > 0 ? (fetchTask.count / fetchTask.total) * 100 : 0} 
+                    className={`w-full h-2 ${isRateLimited ? '[&>div]:bg-orange-500' : ''}`}
+                  />
+                  
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">
+                      {fetchTask.status === 'running' || isRateLimited ? (
+                        <>
+                          Fetching articles... ({fetchTask.count}/{fetchTask.total || '?'})
+                          {isRateLimited && (
+                            <span className="text-orange-600 font-medium">
+                              {' '}(Rate limited - retrying in {rateLimitRetryAfter}s)
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {articles.length} total articles
+                          {fetchTask.status === 'completed' ? ' (completed)' :
+                           fetchTask.status === 'stopped' ? ' (stopped by user)' :
+                           fetchTask.status === 'error' ? ` (error: ${fetchTask.error})` : ''}
+                        </>
+                      )}
+                    </span>
+                    <Button 
+                      onClick={isExporting || isRateLimited ? stopFetchArticles : startFetchArticles}
+                      size="sm"
+                      variant={isExporting || isRateLimited ? "destructive" : "outline"}
+                      disabled={!sessionId && !isExporting && !isRateLimited}
+                    >
+                      {isExporting || isRateLimited ? "Stop Fetching" : sessionId ? "Fetch Articles" : "Auth Required"}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Content Downloading Section */}
+                {articles.length > 0 && (
+                  <div className="space-y-3 pt-3 border-t">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium">Content Downloading</h4>
+                      {(isDownloading || isDownloadRateLimited) && 
+                        <Clock className="w-4 h-4 animate-pulse text-gray-500" />
+                      }
+                    </div>
+                    
+                    {/* Content download progress bar */}
+                    <Progress 
+                      value={downloadTask.total > 0 
+                        ? (downloadTask.count / downloadTask.total) * 100 
+                        : 0} 
+                      className={`w-full h-2 ${isDownloadRateLimited ? '[&>div]:bg-orange-500' : ''}`}
+                    />
+                    
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">
+                        {downloadTask.status === 'running' || isDownloadRateLimited ? (
+                          <>
+                            Downloading... ({downloadTask.count}/{downloadTask.total})
+                            {isDownloadRateLimited && (
+                              <span className="text-orange-600 font-medium">
+                                {' '}(Rate limited - retrying in {downloadRateLimitRetryAfter}s)
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {downloadTask.count > 0 
+                              ? `${downloadTask.count}/${downloadTask.total} articles`
+                              : `0/${articles.length} articles`}
+                            {downloadTask.status === 'completed' ? ' (completed)' :
+                             downloadTask.status === 'stopped' ? ' (stopped by user)' :
+                             downloadTask.status === 'error' ? ` (error: ${downloadTask.error})` : ''}
+                          </>
+                        )}
+                        {downloadStatus && downloadStatus.downloading > 0 && ` (${downloadStatus.downloading} in progress)`}
+                        {downloadStatus && downloadStatus.errors > 0 && ` • ${downloadStatus.errors} errors`}
+                      </span>
+                      <Button 
+                        onClick={isDownloading ? stopDownloadArticles : startDownloadArticles}
+                        size="sm"
+                        variant={isDownloading ? "destructive" : "default"}
+                      >
+                        {isDownloading ? "Stop Downloads" : "Download Content"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Session URL */}
+                {sessionId && (
+                  <div className="p-3 bg-blue-50 rounded-lg border-t">
+                    <p className="text-sm font-medium text-blue-900 mb-1">Session URL</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs bg-white px-2 py-1 rounded flex-1 overflow-x-auto">
+                        {typeof window !== 'undefined' ? window.location.origin : ''}{router ? `?session=${sessionId}` : ''}
+                      </code>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          const url = `${window.location.origin}?session=${sessionId}`;
+                          navigator.clipboard.writeText(url);
+                        }}
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
-        )}
+
 
         {/* Rate Limit Warning */}
         {isRateLimited && (
@@ -377,11 +645,60 @@ export default function PocketExportApp() {
         )}
 
         {/* Articles Grid */}
-        {articles.length > 0 && (
-          <Card>
+        <Card>
             <CardHeader>
-              <CardTitle>Your Articles ({articles.length})</CardTitle>
-              <CardDescription>Your exported Pocket articles will appear here</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Your Articles ({articles.length})</CardTitle>
+                  <CardDescription>
+                    {articles.length === 0 
+                      ? "Click 'Fetch Articles' to start importing your Pocket articles" 
+                      : "Your exported Pocket articles"}
+                  </CardDescription>
+                </div>
+                {sessionId && (
+                  <div className="flex flex-col gap-2 items-end">
+                    <div className="text-xs text-gray-500">
+                      Session: <code className="bg-gray-100 px-1 rounded">{sessionId}</code>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const url = `${window.location.origin}?session=${sessionId}`;
+                          navigator.clipboard.writeText(url);
+                        }}
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copy Link
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          window.open(`/api/export/download?sessionId=${sessionId}&format=json`, '_blank')
+                        }}
+                      >
+                        <FileDown className="w-4 h-4 mr-2" />
+                        JSON ({articles.length})
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          window.open(`/api/export/download?sessionId=${sessionId}&format=zip`, '_blank')
+                        }}
+                      >
+                        <FileDown className="w-4 h-4 mr-2" />
+                        ZIP ({articles.length})
+                      </Button>
+                    </div>
+                    {exportProgress < 100 && (
+                      <p className="text-xs text-gray-500 mt-1">Download includes {articles.length} articles fetched so far</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {/* Filter Input */}
@@ -389,17 +706,24 @@ export default function PocketExportApp() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
+                    ref={filterInputRef}
                     type="text"
                     placeholder="Filter by title, URL, or tags..."
-                    value={filterQuery}
-                    onChange={(e) => setFilterQuery(e.target.value)}
+                    defaultValue=""
+                    onChange={handleFilterChange}
                     className="pl-10 pr-10"
                   />
                   {filterQuery && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setFilterQuery("")}
+                      onClick={() => {
+                        if (filterInputRef.current) {
+                          filterInputRef.current.value = '';
+                        }
+                        setFilterQuery("");
+                        setDebouncedFilterQuery("");
+                      }}
                       className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 p-0"
                     >
                       <X className="h-4 w-4" />
@@ -413,45 +737,79 @@ export default function PocketExportApp() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredArticles.map((article) => (
-                  <Card key={article.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" style={{ contain: 'layout' }}>
+                {filteredArticles.slice(0, 100).map((article) => {
+                  const isCurrentlyDownloading = downloadTask.currentID === article.savedId;
+                  return (
+                    <Card 
+                      key={article.savedId} 
+                      className={`overflow-hidden hover:shadow-lg transition-all ${
+                        isCurrentlyDownloading 
+                          ? 'ring-2 ring-blue-500 shadow-blue-200 shadow-lg animate-pulse' 
+                          : ''
+                      }`}
+                    >
                     <div className="aspect-video relative overflow-hidden bg-gray-100">
-                      {article.featured_image && !failedImages.has(article.id) ? (
-                        <img
-                          src={article.featured_image}
-                          alt={article.title}
-                          className="w-full h-full object-cover"
-                          onError={() => {
-                            setFailedImages(prev => {
-                              const newSet = new Set(prev)
-                              newSet.add(article.id)
-                              return newSet
-                            })
-                          }}
-                        />
-                      ) : (
-                        <svg
-                          className="w-full h-full"
-                          viewBox="0 0 400 225"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <rect width="400" height="225" fill="#f3f4f6" />
-                          <rect x="140" y="82.5" width="120" height="60" rx="4" fill="#e5e7eb" />
-                          <path
-                            d="M180 112.5L210 142.5L240 112.5"
-                            stroke="#9ca3af"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <circle cx="230" cy="102.5" r="8" fill="#9ca3af" />
-                        </svg>
-                      )}
+                      <ArticleImage 
+                        article={article} 
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                     <CardContent className="p-4">
-                      <h3 className="font-semibold text-lg mb-2 line-clamp-2">{article.title}</h3>
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold text-lg line-clamp-2 flex-1">{article.title}</h3>
+                        <Avatar 
+                          className="h-8 w-8 ml-2 cursor-pointer hover:opacity-80 transition-opacity" 
+                          title={
+                            downloadStatus?.articleStatus?.[article.savedId] === 'completed' 
+                              ? 'Click to download HTML' 
+                              : 'Click to download article content'
+                          }
+                          onClick={async () => {
+                            if (downloadStatus?.articleStatus?.[article.savedId] === 'completed') {
+                              // Download the HTML file
+                              window.open(
+                                `/api/export/article-html?sessionId=${sessionId}&articleId=${article.savedId}`,
+                                '_blank'
+                              );
+                            } else {
+                              // Trigger download for this article
+                              try {
+                                const response = await fetch(
+                                  `/api/export/download-single?sessionId=${sessionId}&articleId=${article.savedId}`,
+                                  { method: 'POST' }
+                                );
+                                
+                                if (!response.ok) {
+                                  const error = await response.json();
+                                  alert(`Error: ${error.error}`);
+                                } else {
+                                  // Start polling if not already running
+                                  if (!pollIntervalRef.current) {
+                                    startStatusPolling(sessionId);
+                                  }
+                                }
+                              } catch (error) {
+                                alert('Failed to start download');
+                              }
+                            }
+                          }}
+                        >
+                          <AvatarFallback className={
+                            downloadStatus?.articleStatus?.[article.savedId] === 'completed' 
+                              ? "bg-green-100 text-green-700" 
+                              : downloadStatus?.articleStatus?.[article.savedId] === 'downloading'
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-gray-100 text-gray-600"
+                          }>
+                            {downloadStatus?.articleStatus?.[article.savedId] === 'completed' 
+                              ? '✓' 
+                              : downloadStatus?.articleStatus?.[article.savedId] === 'downloading'
+                              ? '⏬'
+                              : '⏳'}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
 
                       <div className="flex items-center space-x-2 text-sm text-gray-600 mb-3">
                         <Globe className="w-4 h-4" />
@@ -460,7 +818,7 @@ export default function PocketExportApp() {
                             try {
                               return new URL(article.url).hostname;
                             } catch {
-                              return article.domain || 'Unknown domain';
+                              return article.item.domainMetadata?.name || 'Unknown domain';
                             }
                           })()}
                         </span>
@@ -469,9 +827,9 @@ export default function PocketExportApp() {
                       {article.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-3">
                           {article.tags.slice(0, 3).map((tag) => (
-                            <Badge key={tag} variant="secondary" className="text-xs">
+                            <Badge key={tag.id} variant="secondary" className="text-xs">
                               <Tag className="w-3 h-3 mr-1" />
-                              {tag}
+                              {tag.name}
                             </Badge>
                           ))}
                           {article.tags.length > 3 && (
@@ -483,18 +841,34 @@ export default function PocketExportApp() {
                       )}
 
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">{new Date(article.added_at).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-500">{new Date(article._createdAt * 1000).toLocaleDateString()}</span>
                         <Button size="sm" variant="outline" onClick={() => window.open(article.url, "_blank")}>
                           <ExternalLink className="w-4 h-4" />
                         </Button>
                       </div>
+                      
+                      <div className="mt-2 pt-2 border-t">
+                        <a 
+                          href={`https://getpocket.com/read/${article.item.readerSlug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                          Pocket ID: {article.savedId} 📄
+                        </a>
+                      </div>
                     </CardContent>
                   </Card>
-                ))}
+                  )
+                })}
               </div>
+              {filteredArticles.length > 100 && (
+                <div className="mt-6 text-center text-sm text-gray-600">
+                  Showing first 100 of {filteredArticles.length} results. Refine your search to see more.
+                </div>
+              )}
             </CardContent>
           </Card>
-        )}
 
         {/* Empty State */}
         {!isExporting && articles.length === 0 && !parsedRequest && (
@@ -505,6 +879,11 @@ export default function PocketExportApp() {
               </div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to Export</h3>
               <p className="text-gray-600">Follow the steps above to start exporting your Pocket articles</p>
+              {sessionId && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Session ID: <code className="bg-gray-100 px-1 rounded">{sessionId}</code>
+                </p>
+              )}
             </CardContent>
           </Card>
         )}

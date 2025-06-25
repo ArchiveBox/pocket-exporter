@@ -2,12 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const { getHeaders, getGraphQLEndpoint, extractReaderSlug, handleRateLimit, respectRateLimit, isRateLimitResponse, isAuthError, getCurrentBackoff, increaseBackoff, resetBackoff } = require('./helpers');
+const { getHeaders, getGraphQLEndpoint, extractReaderSlug, handleRateLimit, respectRateLimit, isRateLimitResponse, isAuthError, getCurrentBackoff, increaseBackoff, resetBackoff, buildGraphQLQuery, getArticleDir, getArticleHtmlPath, isArticleDownloaded, makeGraphQLRequest } = require('./helpers');
 
 const ARTICLES_DIR = path.join(__dirname, 'articles');
 
-const query = `
+const query = buildGraphQLQuery(`
   query GetSavedItemBySlug($id: ID!) {
     readerSlug(slug: $id) {
       fallbackPage {
@@ -60,133 +59,15 @@ const query = `
       slug
     }
   }
-  
-  fragment SavedItemDetails on SavedItem {
-    _createdAt
-    _updatedAt
-    title
-    url
-    savedId: id
-    status
-    isFavorite
-    favoritedAt
-    isArchived
-    archivedAt
-    tags {
-      id
-      name
-    }
-    annotations {
-      highlights {
-        id
-        quote
-        patch
-        version
-        _createdAt
-        _updatedAt
-        note {
-          text
-          _createdAt
-          _updatedAt
-        }
-      }
-    }
-  }
+`, ['SavedItemDetails', 'ItemDetails']);
 
-  fragment ItemDetails on Item {
-    isArticle
-    title
-    shareId: id
-    itemId
-    readerSlug
-    resolvedId
-    resolvedUrl
-    domain
-    domainMetadata {
-      name
-    }
-    excerpt
-    hasImage
-    hasVideo
-    images {
-      caption
-      credit
-      height
-      imageId
-      src
-      width
-    }
-    videos {
-      vid
-      videoId
-      type
-      src
-    }
-    topImageUrl
-    timeToRead
-    givenUrl
-    collection {
-      imageUrl
-      intro
-      title
-      excerpt
-    }
-    authors {
-      id
-      name
-      url
-    }
-    datePublished
-    syndicatedArticle {
-      slug
-      publisher {
-        name
-        url
-      }
-    }
-  }
-`;
-
-async function makeGraphQLRequest(readerSlug) {
-  const postData = JSON.stringify({
-    query: query,
-    operationName: "GetReaderItem",
-    variables: { id: readerSlug }
-  });
-
-  const headers = getHeaders({
-    'content-length': Buffer.byteLength(postData),
+async function makeArticleGraphQLRequest(readerSlug) {
+  const variables = { id: readerSlug };
+  const additionalHeaders = {
     'referer': `https://getpocket.com/read/${readerSlug}`
-  });
-
-  const options = {
-    hostname: 'getpocket.com',
-    path: getGraphQLEndpoint(),
-    method: 'POST',
-    headers: headers
   };
-
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(data));
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-    
-    req.on('error', reject);
-    req.write(postData);
-    req.end();
-  });
+  
+  return makeGraphQLRequest(query, variables, "GetReaderItem", additionalHeaders);
 }
 
 async function processArticle(folder, retryAttempt = 0) {
@@ -213,7 +94,7 @@ async function processArticle(folder, retryAttempt = 0) {
     await respectRateLimit();
     
     console.log(`Downloading content for ./articles/${readerSlug}...`);
-    const response = await makeGraphQLRequest(readerSlug);
+    const response = await makeArticleGraphQLRequest(readerSlug);
 
     // Check for rate limit response
     if (isRateLimitResponse(response)) {
