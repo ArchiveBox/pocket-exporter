@@ -53,7 +53,13 @@ export function deepMerge<T extends Record<string, any>>(target: T, source: Part
 }
 
 export function isObject(obj: any): obj is Record<string, any> {
-  return obj && typeof obj === 'object' && !Array.isArray(obj);
+  return obj && 
+         typeof obj === 'object' && 
+         !Array.isArray(obj) && 
+         !(obj instanceof Date) &&
+         !(obj instanceof RegExp) &&
+         !(obj instanceof Error) &&
+         obj.constructor === Object; // Ensure it's a plain object
 }
 
 // Extract reader slug from various sources

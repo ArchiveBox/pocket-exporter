@@ -138,16 +138,23 @@ class ExportStore {
         return undefined;
       }
       
-      // Convert date strings back to Date objects
+      // Convert date strings back to Date objects and fix corrupted ones
       const dateFields = ['createdAt', 'lastModifiedAt', 'startedAt', 'endedAt', 'rateLimitedAt'];
       const convertDates = (obj: any, path: string[] = []): any => {
         if (!obj || typeof obj !== 'object') return obj;
         
         for (const key in obj) {
-          const currentPath = [...path, key].join('.');
-          if ((dateFields.includes(key) || currentPath.includes('Task.') && dateFields.some(f => key === f)) && obj[key]) {
-            obj[key] = new Date(obj[key]);
-          } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+          // Check if this key is a date field anywhere in the object
+          if (dateFields.includes(key) && obj[key]) {
+            // Check if it's a corrupted date object (has numeric keys like "0", "1", etc.)
+            if (typeof obj[key] === 'object' && '0' in obj[key]) {
+              console.log(`Fixing corrupted date at ${[...path, key].join('.')}, replacing with current time`);
+              obj[key] = new Date();
+            } else {
+              // Normal conversion
+              obj[key] = new Date(obj[key]);
+            }
+          } else if (typeof obj[key] === 'object' && obj[key] !== null && !(obj[key] instanceof Date)) {
             obj[key] = convertDates(obj[key], [...path, key]);
           }
         }
