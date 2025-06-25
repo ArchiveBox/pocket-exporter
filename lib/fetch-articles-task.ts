@@ -23,7 +23,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   console.log(`Starting fetch articles task for session ${sessionId}`);
   
   // Get session data
-  const session = exportStore.getSession(sessionId);
+  const session = await exportStore.getSession(sessionId);
   if (!session) {
     console.error(`Session ${sessionId} not found`);
     process.exit(1);
@@ -35,7 +35,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   }
 
   // Reset fetch task status to running at start
-  exportStore.updateFetchTask(sessionId, {
+  await exportStore.updateFetchTask(sessionId, {
     status: 'running',
     startedAt: new Date(),
     count: 0,
@@ -49,8 +49,8 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   });
 
   // Check if task should stop
-  const shouldStop = () => {
-    const currentSession = exportStore.getSession(sessionId);
+  const shouldStop = async () => {
+    const currentSession = await exportStore.getSession(sessionId);
     return currentSession?.currentFetchTask?.status === 'stopped';
   };
 

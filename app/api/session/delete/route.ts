@@ -16,7 +16,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Check if session exists
-    const session = exportStore.getSession(sessionId);
+    const session = await exportStore.getSession(sessionId);
     if (!session) {
       return NextResponse.json(
         { error: 'Session not found' },
@@ -26,21 +26,21 @@ export async function DELETE(request: NextRequest) {
 
     // Stop any running tasks
     if (session.currentFetchTask?.status === 'running') {
-      exportStore.updateFetchTask(sessionId, {
+      await exportStore.updateFetchTask(sessionId, {
         status: 'stopped',
         endedAt: new Date()
       });
     }
 
     if (session.currentDownloadTask?.status === 'running') {
-      exportStore.updateDownloadTask(sessionId, {
+      await exportStore.updateDownloadTask(sessionId, {
         status: 'stopped',
         endedAt: new Date()
       });
     }
 
     // Delete session using the export store
-    const deleted = exportStore.deleteSession(sessionId);
+    const deleted = await exportStore.deleteSession(sessionId);
     
     if (!deleted) {
       return NextResponse.json(

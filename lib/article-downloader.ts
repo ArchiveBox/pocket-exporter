@@ -201,8 +201,8 @@ async function downloadWithTimeout(url: string, destPath: string, timeout = 2000
 }
 
 // Helper function to check if downloads should stop
-function shouldStopDownload(sessionId: string): boolean {
-  const session = exportStore.getSession(sessionId);
+async function shouldStopDownload(sessionId: string): Promise<boolean> {
+  const session = await exportStore.getSession(sessionId);
   return session?.currentDownloadTask?.status === 'stopped';
 }
 
@@ -513,7 +513,7 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
 
   while (queue.activeDownloads < queue.concurrency) {
     // Check session status to see if downloads were stopped
-    const session = exportStore.getSession(sessionId);
+    const session = await exportStore.getSession(sessionId);
     if (session?.currentDownloadTask?.status === 'stopped') {
       console.log('Downloads stopped by user');
       // Mark all pending items as stopped
@@ -537,13 +537,13 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
 
     // Update current download item in session
     if (updateSession) {
-      exportStore.updateDownloadTask(sessionId, {
+      await exportStore.updateDownloadTask(sessionId, {
         currentID: pending.article.savedId
       });
     }
 
     downloadArticleContent(sessionId, pending.article, auth)
-      .then(() => {
+      .then(async () => {
         // Check the actual status in the queue (it might have been set to 'error' in downloadArticleContent)
         if (pending.status !== 'error') {
           pending.status = 'completed';
@@ -554,12 +554,12 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
         if (updateSession) {
           const completedCount = queue.articles.filter(item => item.status === 'completed').length;
           const errorCount = queue.articles.filter(item => item.status === 'error').length;
-          exportStore.updateDownloadTask(sessionId, {
+          await exportStore.updateDownloadTask(sessionId, {
             count: completedCount + errorCount
           });
         }
       })
-      .catch((error) => {
+      .catch(async (error) => {
         // Status might already be set to 'error' in downloadArticleContent
         if (pending.status !== 'error') {
           pending.status = 'error';
@@ -570,7 +570,7 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
         if (updateSession) {
           const completedCount = queue.articles.filter(item => item.status === 'completed').length;
           const errorCount = queue.articles.filter(item => item.status === 'error').length;
-          exportStore.updateDownloadTask(sessionId, {
+          await exportStore.updateDownloadTask(sessionId, {
             count: completedCount + errorCount
           });
         }
@@ -591,7 +591,7 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
           }
         }
       })
-      .finally(() => {
+      .finally(async () => {
         queue.activeDownloads--;
         
         // Check if all downloads are complete
@@ -604,7 +604,7 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
           const errorCount = queue.articles.filter(item => item.status === 'error').length;
           
           if (updateSession) {
-            exportStore.updateDownloadTask(sessionId, {
+            await exportStore.updateDownloadTask(sessionId, {
               status: errorCount > 0 && completedCount === 0 ? 'error' : 'completed',
               endedAt: new Date(),
               currentID: undefined
@@ -618,12 +618,12 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
   }
 }
 
-export function startArticleDownloads(
+export async function startArticleDownloads(
   sessionId: string,
   articles: Article[],
   auth: { cookieString: string; headers: Record<string, string> },
   updateSession: boolean = true
-): void {
+): Promise<void> {
   console.log(`Starting article downloads for session ${sessionId} with ${articles.length} articles`);
   
   let queue = downloadQueues.get(sessionId);
@@ -671,7 +671,7 @@ export function startArticleDownloads(
 
   // Update download task status in session only if requested
   if (updateSession) {
-    exportStore.updateDownloadTask(sessionId, {
+    await exportStore.updateDownloadTask(sessionId, {
       status: 'running',
       startedAt: new Date(),
       count: 0,
@@ -729,9 +729,9 @@ async function processExistingArticlesForImages(
   }
 }
 
-export function stopDownloads(sessionId: string): void {
+export async function stopDownloads(sessionId: string): Promise<void> {
   // Update session status - this will be picked up by the download process
-  exportStore.updateDownloadTask(sessionId, {
+  await exportStore.updateDownloadTask(sessionId, {
     status: 'stopped',
     endedAt: new Date(),
     currentID: undefined

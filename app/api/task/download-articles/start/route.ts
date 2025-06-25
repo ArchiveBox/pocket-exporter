@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = exportStore.getSession(sessionId);
+    const session = await exportStore.getSession(sessionId);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Session not found' },
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get all articles for the session
-    const articles = await exportStore.getSessionArticlesAsync(sessionId);
+    const articles = await exportStore.getSessionArticles(sessionId);
     
     if (articles.length === 0) {
       return NextResponse.json(
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Start downloading articles - this updates the session automatically
-    startArticleDownloads(sessionId, articles, session.auth);
+    await startArticleDownloads(sessionId, articles, session.auth);
 
     return NextResponse.json({ 
       success: true,

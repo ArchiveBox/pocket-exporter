@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = exportStore.getSession(sessionId);
+    const session = await exportStore.getSession(sessionId);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Session not found' },
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the specific article
-    const articles = await exportStore.getSessionArticlesAsync(sessionId);
+    const articles = await exportStore.getSessionArticles(sessionId);
     const article = articles.find(a => a.savedId === articleId);
     
     if (!article) {

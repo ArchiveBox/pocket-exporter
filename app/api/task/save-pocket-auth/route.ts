@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     const sessionUrl = request.headers.get('referer') || '';
 
     // Create or update session with auth data
-    exportStore.createOrUpdateSession(sessionId, {
+    await exportStore.createOrUpdateSession(sessionId, {
       cookieString,
       headers
     }, sessionUrl.split('?')[0] + `?session=${sessionId}`);

@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let session = exportStore.getSession(sessionId);
+    let session = await exportStore.getSession(sessionId);
 
     if (!session) {
       console.error('Session not found:', sessionId);
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Always return the full list of articles from disk
-    const allArticles = await exportStore.getSessionArticlesAsync(sessionId);
+    const allArticles = await exportStore.getSessionArticles(sessionId);
 
     // Check if download task process is actually running
     if (session.currentDownloadTask && 
@@ -41,13 +41,13 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         // Process doesn't exist, update task status to stopped
         console.log(`Download process ${session.currentDownloadTask.pid} not found, updating status to stopped`);
-        exportStore.updateDownloadTask(sessionId, {
+        await exportStore.updateDownloadTask(sessionId, {
           status: 'stopped',
           endedAt: new Date(),
           currentID: undefined
         });
         // Refresh session data
-        session = exportStore.getSession(sessionId)!;
+        session = await exportStore.getSession(sessionId)!;
       }
     }
     
@@ -60,13 +60,13 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         // Process doesn't exist, update task status to stopped
         console.log(`Fetch process ${session.currentFetchTask.pid} not found, updating status to stopped`);
-        exportStore.updateFetchTask(sessionId, {
+        await exportStore.updateFetchTask(sessionId, {
           status: 'stopped',
           endedAt: new Date(),
           currentID: undefined
         });
         // Refresh session data
-        session = exportStore.getSession(sessionId)!;
+        session = await exportStore.getSession(sessionId)!;
       }
     }
     

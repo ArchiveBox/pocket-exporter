@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = exportStore.getSession(sessionId);
+    const session = await exportStore.getSession(sessionId);
     if (!session) {
       return NextResponse.json(
         { success: false, error: 'Session not found' },
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Update fetch task status to stopped
-    exportStore.updateFetchTask(sessionId, {
+    await exportStore.updateFetchTask(sessionId, {
       status: 'stopped',
       endedAt: new Date()
     });

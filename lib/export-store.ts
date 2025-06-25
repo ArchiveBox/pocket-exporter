@@ -59,33 +59,31 @@ class ExportStore {
   }
 
 
-  private saveSessionToDisk(session: ExportSession): void {
+  private async saveSessionToDisk(session: ExportSession): Promise<void> {
     try {
       const sessionDir = path.join(this.sessionsDir, session.id);
-      if (!fs.existsSync(sessionDir)) {
-        fs.mkdirSync(sessionDir, { recursive: true });
-      }
+      await fs.promises.mkdir(sessionDir, { recursive: true });
       const filePath = path.join(sessionDir, 'session.json');
       // Don't save articles array in session.json to keep it small
       const sessionData = { ...session };
-      fs.writeFileSync(filePath, JSON.stringify(sessionData, null, 2));
+      await fs.promises.writeFile(filePath, JSON.stringify(sessionData, null, 2));
     } catch (error) {
       console.error(`Failed to save session ${session.id} to disk:`, error);
     }
   }
 
 
-  createSession(auth: { cookieString: string; headers: Record<string, string> }): string {
+  async createSession(auth: { cookieString: string; headers: Record<string, string> }): Promise<string> {
     const id = Math.random().toString(36).substring(2) + Date.now().toString(36);
     return this.createOrUpdateSession(id, auth);
   }
   
-  createOrUpdateSession(id: string, auth: { cookieString: string; headers: Record<string, string> }, sessionUrl?: string): string {
+  async createOrUpdateSession(id: string, auth: { cookieString: string; headers: Record<string, string> }, sessionUrl?: string): Promise<string> {
     const outputDir = path.join(this.sessionsDir, id);
     const now = new Date();
     
     // Check if session already exists
-    const existingSession = this.getSession(id);
+    const existingSession = await this.getSession(id);
     if (existingSession) {
       // Update auth but preserve existing session state
       existingSession.auth = auth;
@@ -95,7 +93,7 @@ class ExportStore {
       }
       
       // Reset fetch task status but preserve the actual article count
-      const currentArticleCount = this.getSessionArticleIds(id).length;
+      const currentArticleCount = (await this.getSessionArticleIds(id)).length;
       existingSession.currentFetchTask = {
         status: 'idle',
         count: currentArticleCount,
@@ -103,7 +101,7 @@ class ExportStore {
         cursor: null
       };
       
-      this.saveSessionToDisk(existingSession);
+      await this.saveSessionToDisk(existingSession);
       return id;
     }
     
@@ -127,17 +125,16 @@ class ExportStore {
         total: 0
       }
     };
-    this.saveSessionToDisk(session);
+    await this.saveSessionToDisk(session);
     return id;
   }
 
-  getSession(id: string): ExportSession | undefined {
+  async getSession(id: string): Promise<ExportSession | undefined> {
     // Always read from disk to ensure consistency
     const sessionPath = path.join(this.sessionsDir, id, 'session.json');
-    if (fs.existsSync(sessionPath)) {
-      try {
-        const data = fs.readFileSync(sessionPath, 'utf8');
-        const session = JSON.parse(data, (key, value) => {
+    try {
+      const data = await fs.promises.readFile(sessionPath, 'utf8');
+      const session = JSON.parse(data, (key, value) => {
           // Convert date strings back to Date objects
           if (key === 'createdAt' || key === 'lastModifiedAt' || key === 'startedAt' || 
               key === 'endedAt' || key === 'rateLimitedAt') {
@@ -148,7 +145,7 @@ class ExportStore {
         
         // Ensure all required fields are present with defaults
         const now = new Date();
-        const articleCount = this.getSessionArticleIds(id).length;
+        const articleCount = (await this.getSessionArticleIds(id)).length;
         
         // Ensure currentFetchTask exists
         if (!session.currentFetchTask) {
@@ -183,16 +180,17 @@ class ExportStore {
         }
         
         return session;
-      } catch (error) {
-        console.error(`Failed to read session ${id} from disk:`, error);
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          console.error(`Failed to read session ${id} from disk:`, error);
+        }
       }
-    }
     return undefined;
   }
   
-  async getSessionArticlesAsync(id: string): Promise<Article[]> {
+  async getSessionArticles(id: string): Promise<Article[]> {
     // Use getSessionArticleIds to get valid article directories
-    const articleIds = await this.getSessionArticleIdsAsync(id);
+    const articleIds = await this.getSessionArticleIds(id);
     const sessionDir = path.join(this.sessionsDir, id, 'articles');
     
     // Load articles in parallel batches to avoid overwhelming file system
@@ -223,38 +221,8 @@ class ExportStore {
     return articles;
   }
   
-  getSessionArticles(id: string): Article[] {
-    // Keep synchronous version for backward compatibility
-    // But this is the performance bottleneck!
-    const articles: Article[] = [];
-    
-    // Use getSessionArticleIds to get valid article directories
-    const articleIds = this.getSessionArticleIds(id);
-    // console.log(`Found ${articleIds.length} valid articles for session ${id}`);
-    
-    const sessionDir = path.join(this.sessionsDir, id, 'articles');
-    for (const articleId of articleIds) {
-      try {
-        const indexPath = path.join(sessionDir, articleId, 'index.json');
-        const articleData = fs.readFileSync(indexPath, 'utf8');
-        const article = JSON.parse(articleData);
-        // Enrich article with fallback image URLs
-        const enrichedArticle = enrichArticleWithFallbackImages(article, id);
-        articles.push(enrichedArticle);
-      } catch (error) {
-        console.error(`Failed to load article ${articleId}:`, error);
-      }
-    }
-    
-    // console.log(`Loaded ${articles.length} articles from disk for session ${id}`);
-    
-    // Sort articles by creation date (newest first) to match UI expectation
-    articles.sort((a, b) => b._createdAt - a._createdAt);
-    
-    return articles;
-  }
   
-  async getSessionArticleIdsAsync(id: string): Promise<string[]> {
+  async getSessionArticleIds(id: string): Promise<string[]> {
     const sessionDir = path.join(this.sessionsDir, id, 'articles');
     
     try {
@@ -303,80 +271,49 @@ class ExportStore {
     }
   }
   
-  getSessionArticleIds(id: string): string[] {
-    const sessionDir = path.join(this.sessionsDir, id, 'articles');
-    const articleIds: string[] = [];
-    
-    if (fs.existsSync(sessionDir)) {
-      try {
-        const dirs = fs.readdirSync(sessionDir);
-        for (const dir of dirs) {
-          // Skip hidden files
-          if (!dir.startsWith('.')) {
-            const dirPath = path.join(sessionDir, dir);
-            // Check if it's a directory AND contains index.json
-            if (fs.statSync(dirPath).isDirectory()) {
-              const indexPath = path.join(dirPath, 'index.json');
-              if (fs.existsSync(indexPath)) {
-                articleIds.push(dir);
-              }
-            }
-          }
-        }
-        // Sort by integer value (largest to smallest)
-        articleIds.sort((a, b) => {
-          const numA = parseInt(a, 10);
-          const numB = parseInt(b, 10);
-          return numB - numA;
-        });
-      } catch (error) {
-        console.error(`Failed to get article IDs for session ${id}:`, error);
-      }
-    }
-    
-    return articleIds;
-  }
 
-  updateSession(id: string, updates: Partial<ExportSession>): void {
-    const session = this.getSession(id);
+  async updateSession(id: string, updates: Partial<ExportSession>): Promise<void> {
+    const session = await this.getSession(id);
     if (session) {
       const updatedSession = { 
         ...session, 
         ...updates,
         lastModifiedAt: new Date()
       };
-      this.saveSessionToDisk(updatedSession);
+      await this.saveSessionToDisk(updatedSession);
     }
   }
   
-  updateFetchTask(id: string, updates: Partial<ExportSession['currentFetchTask']>): void {
-    const session = this.getSession(id);
+  async updateFetchTask(id: string, updates: Partial<ExportSession['currentFetchTask']>): Promise<void> {
+    const session = await this.getSession(id);
     if (session) {
       session.currentFetchTask = {
         ...session.currentFetchTask,
         ...updates
       };
       session.lastModifiedAt = new Date();
-      this.saveSessionToDisk(session);
+      await this.saveSessionToDisk(session);
     }
   }
   
-  updateDownloadTask(id: string, updates: Partial<ExportSession['currentDownloadTask']>): void {
-    const session = this.getSession(id);
+  async updateDownloadTask(id: string, updates: Partial<ExportSession['currentDownloadTask']>): Promise<void> {
+    const session = await this.getSession(id);
     if (session) {
       session.currentDownloadTask = {
         ...session.currentDownloadTask,
         ...updates
       };
       session.lastModifiedAt = new Date();
-      this.saveSessionToDisk(session);
+      await this.saveSessionToDisk(session);
     }
   }
 
-  deleteSession(id: string): boolean {
+  async deleteSession(id: string): Promise<boolean> {
     const sessionDir = path.join(this.sessionsDir, id);
     
-    if (!fs.existsSync(sessionDir)) {
+    try {
+      await fs.promises.access(sessionDir);
+    } catch {
       console.log(`Session directory not found: ${sessionDir}`);
       return false;
     }
@@ -384,16 +321,24 @@ class ExportStore {
     try {
       // Delete articles directory if it exists
       const articlesDir = path.join(sessionDir, 'articles');
-      if (fs.existsSync(articlesDir)) {
-        fs.rmSync(articlesDir, { recursive: true, force: true });
+      try {
+        await fs.promises.rm(articlesDir, { recursive: true, force: true });
         console.log(`Deleted articles directory: ${articlesDir}`);
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
       }
       
       // Delete session.json if it exists
       const sessionFile = path.join(sessionDir, 'session.json');
-      if (fs.existsSync(sessionFile)) {
-        fs.unlinkSync(sessionFile);
+      try {
+        await fs.promises.unlink(sessionFile);
         console.log(`Deleted session file: ${sessionFile}`);
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
       }
       
       // Preserve payments.json by not deleting it

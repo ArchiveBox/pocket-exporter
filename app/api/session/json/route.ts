@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const session = exportStore.getSession(sessionId);
+    const session = await exportStore.getSession(sessionId);
     if (!session) {
       return NextResponse.json(
         { error: 'Session not found' },
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all articles for the session
-    const articles = await exportStore.getSessionArticlesAsync(sessionId);
+    const articles = await exportStore.getSessionArticles(sessionId);
     
     // Create session data with articles merged in
     const sessionData = {
