@@ -16,6 +16,9 @@ Mozilla is [shutting down Pocket in October 2025](https://getpocket.com/farewell
 - **Privacy First**: All data stays on your machine, deletable anytime
 - **Open Source**: Fully auditable code
 
+![image](https://github.com/user-attachments/assets/6319356a-c0cf-4b45-8985-d300f07d1b9c)
+
+
 ## 🎯 Quick Start
 
 ### Using the Hosted Version
