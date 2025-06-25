@@ -104,6 +104,9 @@ export async function POST(request: NextRequest) {
     // Get the session URL from the request
     const sessionUrl = request.headers.get('referer') || '';
 
+    // Check if session already exists on disk
+    const existingSession = await exportStore.getSession(sessionId);
+    
     // Create or update session with auth data
     await exportStore.createOrUpdateSession(sessionId, {
       cookieString,
@@ -152,7 +155,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ 
       success: true,
-      sessionId 
+      sessionId,
+      existingSession: !!existingSession,
+      message: existingSession ? 'Updated authentication for existing session' : 'Created new session'
     });
 
   } catch (error: any) {
