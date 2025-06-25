@@ -65,6 +65,12 @@ export async function POST(request: NextRequest) {
     let headers: Record<string, string>;
     const oldSessionId = body.oldSessionId; // Get the old session ID if updating
     
+    console.log('Save auth request:', { 
+      hasOldSessionId: !!oldSessionId, 
+      oldSessionId,
+      hasFetchCode: !!body.fetchCode 
+    });
+    
     // Check if we received a fetch code or already parsed data
     if (body.fetchCode) {
       // Parse the fetch code
@@ -101,6 +107,9 @@ export async function POST(request: NextRequest) {
     // Create a readable session ID from the hash
     const sessionId = `pocket-${bearerHash.substring(0, 8)}-${bearerHash.substring(bearerHash.length - 8)}`;
     
+    console.log('Generated session ID:', sessionId);
+    console.log('Session IDs match?', sessionId === oldSessionId);
+    
     // Get the session URL from the request
     const sessionUrl = request.headers.get('referer') || '';
 
@@ -113,22 +122,32 @@ export async function POST(request: NextRequest) {
       headers
     }, sessionUrl.split('?')[0] + `?session=${sessionId}`);
 
+    console.log('Before symlink check:', { oldSessionId, sessionId, condition: oldSessionId && oldSessionId !== sessionId });
+    
     // Handle bearer token change - create symlink from new session to old
     if (oldSessionId && oldSessionId !== sessionId) {
+      console.log(`Bearer token changed - attempting to create symlink from ${sessionId} to ${oldSessionId}`);
       const sessionsDir = path.join(process.cwd(), 'sessions');
       const oldSessionPath = path.join(sessionsDir, oldSessionId);
       const newSessionPath = path.join(sessionsDir, sessionId);
       
+      console.log(`Old session path: ${oldSessionPath}`);
+      console.log(`New session path: ${newSessionPath}`);
+      
       try {
         // Check if old session exists and is a real directory
         const oldPathStats = await fs.promises.lstat(oldSessionPath).catch(() => null);
+        console.log(`Old path stats:`, oldPathStats ? `exists, isDirectory: ${oldPathStats.isDirectory()}` : 'does not exist');
+        
         if (oldPathStats && oldPathStats.isDirectory()) {
           // Check if new session path already exists
           const newPathStats = await fs.promises.lstat(newSessionPath).catch(() => null);
+          console.log(`New path stats:`, newPathStats ? `exists, isDirectory: ${newPathStats.isDirectory()}, isSymlink: ${newPathStats.isSymbolicLink()}` : 'does not exist');
+          
           if (newPathStats) {
-            
             if (newPathStats.isSymbolicLink()) {
               // If it's already a symlink, remove it to recreate
+              console.log(`Removing existing symlink at ${newSessionPath}`);
               await fs.promises.unlink(newSessionPath);
             } else if (newPathStats.isDirectory()) {
               // If it's a real directory, don't overwrite it
