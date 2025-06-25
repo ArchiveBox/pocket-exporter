@@ -342,7 +342,13 @@ export default function PocketExportApp() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Pocket Data Exporter</h1>
-          <p className="text-lg text-gray-600">Export your saved articles from Mozilla Pocket.<br/>Export all your bookmark URLs, titles, excerpts, tags, archived article text (for Pocket Premium users), and more...</p>
+          <p className="text-lg text-gray-600">
+            Export your saved articles from Mozilla Pocket.<br/>
+            Export all your bookmark URLs, titles, excerpts, tags, archived article text (for Pocket Premium users), and more...
+            <br/>
+            Export up to 100 articles for free, <i>$15 one-time-fee for unlimited export (including Pocket Premium article content archives and article images).
+          </p>
+
         </div>
 
 
