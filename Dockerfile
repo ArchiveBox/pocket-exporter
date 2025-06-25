@@ -26,7 +26,9 @@ RUN npm ci --legacy-peer-deps
 # Copy application files
 COPY . .
 
-# Build the Next.js application
+# Build the Next.js application with dummy env vars to prevent initialization errors
+ENV STRIPE_SECRET_KEY=dummy_key_for_build
+ENV STRIPE_WEBHOOK_SECRET=dummy_secret_for_build
 RUN npm run build
 
 # Create a non-root user
