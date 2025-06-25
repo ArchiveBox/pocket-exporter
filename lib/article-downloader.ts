@@ -6,6 +6,7 @@ import http from 'http';
 import { URL } from 'url';
 import { execSync } from 'child_process';
 import { exportStore } from '@/lib/export-store';
+import { getSessionSizeInMB } from '@/lib/session-utils';
 
 interface DownloadQueue {
   sessionId: string;
@@ -226,10 +227,12 @@ async function getDirectorySize(dirPath: string): Promise<number> {
   return totalSize;
 }
 
+
 // Helper function to download images for an article
 async function downloadArticleImages(sessionId: string, article: Article, savedItem: any): Promise<void> {
   const articlesDir = getArticleDir(sessionId, article.savedId);
   const MAX_IMAGES_SIZE = 50 * 1024 * 1024; // 50MB limit per article
+  const MAX_GLOBAL_SIZE = 5 * 1024 * 1024 * 1024; // 5GB global limit
   
   if (!savedItem?.item) {
     return;
@@ -305,10 +308,19 @@ async function downloadArticleImages(sessionId: string, article: Article, savedI
       break;
     }
     
+    // Check global quota for all articles
+    const globalSizeMB = await getSessionSizeInMB(sessionId);
+    const globalSizeBytes = globalSizeMB * 1024 * 1024;
+    if (globalSizeBytes >= MAX_GLOBAL_SIZE) {
+      console.log(`  ⚠️  Skipping remaining images - global size limit reached (${(globalSizeMB / 1024).toFixed(2)}GB)`);
+      skippedDueToSize = imageMap.size - downloadedCount - skippedCount - errorCount;
+      break;
+    }
+    
     // Check current directory size before each download
     const currentDirSize = await getDirectorySize(articlesDir);
     if (currentDirSize >= MAX_IMAGES_SIZE) {
-      console.log(`  ⚠️  Skipping remaining images - directory size limit reached (${(currentDirSize / 1024 / 1024).toFixed(1)}MB)`);
+      console.log(`  ⚠️  Skipping remaining images - article size limit reached (${(currentDirSize / 1024 / 1024).toFixed(1)}MB)`);
       skippedDueToSize = imageMap.size - downloadedCount - skippedCount - errorCount;
       break;
     }
