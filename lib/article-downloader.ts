@@ -102,7 +102,7 @@ async function downloadFile(url: string, destPath: string, timeoutMs = 20000): P
       cleanupAndReject(new Error(`Download timeout after ${timeoutMs/1000} seconds`));
     }, timeoutMs);
     
-    const request = protocol.get(options, (response) => {
+    const request = protocol.get(options, async (response) => {
       if (timedOut) return;
       
       // Handle redirects
@@ -122,7 +122,7 @@ async function downloadFile(url: string, destPath: string, timeoutMs = 20000): P
       file.on('finish', () => {
         if (!timedOut) {
           clearTimeout(downloadTimeout);
-          file.close(() => {
+          file.close(async () => {
             // Only move the file if download completed successfully
             try {
               await fs.promises.rename(tempPath, destPath);
