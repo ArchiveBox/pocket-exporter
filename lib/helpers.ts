@@ -1,45 +1,41 @@
-const fs = require('fs');
-const path = require('path');
-require('dotenv').config();
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
+import { Article } from '@/types/article';
 
 const CONSUMER_KEY = process.env.POCKET_CONSUMER_KEY || '94110-6d5ff7a89d72c869766af0e0';
-const COOKIE_STRING = process.env.COOKIE_STRING;
-
-// For backward compatibility, check if we have the cookie string
-if (!COOKIE_STRING) {
-  console.error('Error: COOKIE_STRING must be set in .env file');
-  console.error('\nTo generate a .env file:');
-  console.error('1. Run: node parse_fetch_to_env.js');
-  console.error('2. Follow the instructions to paste a fetch request from Pocket');
-  process.exit(1);
-}
 
 // Common headers for all Pocket API requests
-function getHeaders(additionalHeaders = {}) {
-  const headers = {};
+export function getHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = {};
   
-  // Add all HEADER_ environment variables
-  Object.entries(process.env).forEach(([key, value]) => {
-    if (key.startsWith('HEADER_')) {
-      const headerName = key.replace('HEADER_', '').toLowerCase().replace(/_/g, '-');
-      headers[headerName] = value;
-    }
-  });
+  // Get auth from environment or session
+  const cookieString = process.env.POCKET_COOKIE || '';
+  const headersStr = process.env.POCKET_HEADERS || '{}';
+  let parsedHeaders: Record<string, string> = {};
+  
+  try {
+    parsedHeaders = JSON.parse(headersStr);
+  } catch (e) {
+    console.error('Failed to parse POCKET_HEADERS:', e);
+  }
   
   // Set cookie header
-  headers['cookie'] = COOKIE_STRING;
+  if (cookieString) {
+    headers['cookie'] = cookieString;
+  }
   
-  // Add any additional headers (these override env headers)
-  return { ...headers, ...additionalHeaders };
+  // Merge all headers
+  return { ...headers, ...parsedHeaders, ...additionalHeaders };
 }
 
 // Common GraphQL endpoint
-function getGraphQLEndpoint() {
+export function getGraphQLEndpoint(): string {
   return `/graphql?consumer_key=${CONSUMER_KEY}&enable_cors=1`;
 }
 
 // Deep merge function to combine objects
-function deepMerge(target, source) {
+export function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
   const output = Object.assign({}, target);
   if (isObject(target) && isObject(source)) {
     Object.keys(source).forEach(key => {
@@ -56,12 +52,12 @@ function deepMerge(target, source) {
   return output;
 }
 
-function isObject(obj) {
+export function isObject(obj: any): obj is Record<string, any> {
   return obj && typeof obj === 'object' && !Array.isArray(obj);
 }
 
 // Extract reader slug from various sources
-function extractReaderSlug(articleData) {
+export function extractReaderSlug(articleData: Article): string | undefined {
   // Try to get readerSlug from item first (preferred)
   let readerSlug = articleData.item?.readerSlug;
   
@@ -78,7 +74,13 @@ let lastRequestTime = 0;
 let requestCount = 0;
 let rateLimitBackoff = 1000; // Start with 1 second
 
-async function handleRateLimit(error) {
+interface RateLimitError {
+  message?: string;
+  code?: string;
+  statusCode?: number;
+}
+
+export async function handleRateLimit(error: RateLimitError): Promise<boolean> {
   // Check if it's a rate limit error
   const isRateLimitError = 
     (error.message && error.message.includes('too many requests')) ||
@@ -99,7 +101,7 @@ async function handleRateLimit(error) {
   return false;
 }
 
-async function respectRateLimit() {
+export async function respectRateLimit(): Promise<void> {
   const now = Date.now();
   const timeSinceLastRequest = now - lastRequestTime;
   
@@ -111,8 +113,18 @@ async function respectRateLimit() {
   lastRequestTime = Date.now();
 }
 
+interface GraphQLResponse {
+  data?: any;
+  errors?: Array<{
+    message?: string;
+    extensions?: {
+      code?: string;
+    };
+  }>;
+}
+
 // Check if response indicates rate limiting
-function isRateLimitResponse(response) {
+export function isRateLimitResponse(response: GraphQLResponse): boolean {
   if (response.errors) {
     return response.errors.some(error => 
       error.extensions?.code === '161' ||
@@ -123,7 +135,7 @@ function isRateLimitResponse(response) {
 }
 
 // Check if response indicates authentication error
-function isAuthError(response) {
+export function isAuthError(response: GraphQLResponse): boolean {
   if (response.errors) {
     return response.errors.some(error => 
       error.extensions?.code === 'UNAUTHORIZED_FIELD_OR_TYPE' ||
@@ -136,12 +148,12 @@ function isAuthError(response) {
 }
 
 // Get current backoff time without triggering it
-function getCurrentBackoff() {
+export function getCurrentBackoff(): number {
   return rateLimitBackoff;
 }
 
 // Increase backoff for next time
-function increaseBackoff() {
+export function increaseBackoff(): number {
   const oldBackoff = rateLimitBackoff;
   rateLimitBackoff = Math.min(rateLimitBackoff * 2, 1200000); // 20 minutes max
   console.log(`Increasing backoff from ${oldBackoff/1000}s to ${rateLimitBackoff/1000}s (${Math.round(rateLimitBackoff/60000)} minutes)`);
@@ -149,16 +161,12 @@ function increaseBackoff() {
 }
 
 // Reset backoff to initial value
-function resetBackoff() {
+export function resetBackoff(): void {
   rateLimitBackoff = 1000;
 }
 
-// For backward compatibility
-const PHPSESSID = process.env.PHPSESSID || '';
-const AUTH_BEARER = process.env.AUTH_BEARER_DEFAULT || '';
-
 // GraphQL Fragments
-const GRAPHQL_FRAGMENTS = {
+export const GRAPHQL_FRAGMENTS: Record<string, string> = {
   SavedItemDetails: `
     fragment SavedItemDetails on SavedItem {
       _createdAt
@@ -303,7 +311,7 @@ const GRAPHQL_FRAGMENTS = {
 };
 
 // Common GraphQL query builder
-function buildGraphQLQuery(queryBody, fragments = []) {
+export function buildGraphQLQuery(queryBody: string, fragments: string[] = []): string {
   const fragmentsStr = fragments
     .map(fragmentName => GRAPHQL_FRAGMENTS[fragmentName] || '')
     .filter(Boolean)
@@ -313,23 +321,23 @@ function buildGraphQLQuery(queryBody, fragments = []) {
 }
 
 // Common article directory path helper
-function getArticleDir(sessionId, articleId) {
+export function getArticleDir(sessionId: string, articleId: string): string {
   return path.join(process.cwd(), 'sessions', sessionId, 'articles', articleId);
 }
 
 // Common article HTML path helper
-function getArticleHtmlPath(sessionId, articleId) {
+export function getArticleHtmlPath(sessionId: string, articleId: string): string {
   return path.join(getArticleDir(sessionId, articleId), 'article.html');
 }
 
 // Check if article is already downloaded
-function isArticleDownloaded(sessionId, articleId) {
+export function isArticleDownloaded(sessionId: string, articleId: string): boolean {
   const articleHtmlPath = getArticleHtmlPath(sessionId, articleId);
   return fs.existsSync(articleHtmlPath);
 }
 
 // Common error response handler for API routes
-function createErrorResponse(message, statusCode = 500) {
+export function createErrorResponse(message: string, statusCode: number = 500): Response {
   return new Response(
     JSON.stringify({ error: message }),
     { 
@@ -340,7 +348,7 @@ function createErrorResponse(message, statusCode = 500) {
 }
 
 // Common success response handler for API routes
-function createSuccessResponse(data, statusCode = 200) {
+export function createSuccessResponse(data: any, statusCode: number = 200): Response {
   return new Response(
     JSON.stringify(data),
     { 
@@ -351,8 +359,12 @@ function createSuccessResponse(data, statusCode = 200) {
 }
 
 // Common GraphQL request function
-async function makeGraphQLRequest(query, variables, operationName, additionalHeaders = {}) {
-  const https = require('https');
+export async function makeGraphQLRequest(
+  query: string, 
+  variables: any, 
+  operationName: string, 
+  additionalHeaders: Record<string, string> = {}
+): Promise<GraphQLResponse> {
   const postData = JSON.stringify({
     query: query,
     operationName: operationName,
@@ -393,29 +405,3 @@ async function makeGraphQLRequest(query, variables, operationName, additionalHea
     req.end();
   });
 }
-
-module.exports = {
-  CONSUMER_KEY,
-  PHPSESSID,
-  AUTH_BEARER,
-  getHeaders,
-  getGraphQLEndpoint,
-  deepMerge,
-  isObject,
-  extractReaderSlug,
-  handleRateLimit,
-  respectRateLimit,
-  isRateLimitResponse,
-  isAuthError,
-  getCurrentBackoff,
-  increaseBackoff,
-  resetBackoff,
-  GRAPHQL_FRAGMENTS,
-  buildGraphQLQuery,
-  getArticleDir,
-  getArticleHtmlPath,
-  isArticleDownloaded,
-  createErrorResponse,
-  createSuccessResponse,
-  makeGraphQLRequest
-};

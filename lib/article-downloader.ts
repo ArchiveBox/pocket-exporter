@@ -20,8 +20,23 @@ interface DownloadQueue {
 
 const downloadQueues: Map<string, DownloadQueue> = new Map();
 
-// Import the helpers from the existing script
-const { getHeaders, getGraphQLEndpoint, extractReaderSlug, handleRateLimit, respectRateLimit, isRateLimitResponse, isAuthError, getCurrentBackoff, increaseBackoff, resetBackoff, buildGraphQLQuery, getArticleDir, getArticleHtmlPath, isArticleDownloaded, makeGraphQLRequest } = require('../helpers');
+import { 
+  getHeaders, 
+  getGraphQLEndpoint, 
+  extractReaderSlug, 
+  handleRateLimit, 
+  respectRateLimit, 
+  isRateLimitResponse, 
+  isAuthError, 
+  getCurrentBackoff, 
+  increaseBackoff, 
+  resetBackoff, 
+  buildGraphQLQuery, 
+  getArticleDir, 
+  getArticleHtmlPath, 
+  isArticleDownloaded, 
+  makeGraphQLRequest 
+} from './helpers';
 
 // Track global rate limit state (shared with download_article_content.js)
 let isRateLimited = false;
@@ -487,8 +502,26 @@ async function downloadArticleContent(
           throw new Error('Stopped by user');
         }
         
+        // Save the article HTML
         fs.writeFileSync(articleHtmlPath, articleContent);
         console.log(`✓ Downloaded article.html for: ${article.savedId}`);
+        
+        // Update the article's index.json with the full data from the detail response
+        const articleIndexPath = path.join(articlesDir, 'index.json');
+        const fullArticleData = { ...readerSlugData.savedItem };
+        
+        // Remove the article HTML content since we save it separately
+        if (fullArticleData.item?.article) {
+          delete fullArticleData.item.article;
+        }
+        
+        // Remove related articles to save space
+        if (fullArticleData.item?.relatedAfterArticle) {
+          delete fullArticleData.item.relatedAfterArticle;
+        }
+        
+        fs.writeFileSync(articleIndexPath, JSON.stringify(fullArticleData, null, 2));
+        console.log(`✓ Updated article metadata for: ${article.savedId}`);
         
         // Update the queue status immediately to completed
         const queue = downloadQueues.get(sessionId);
@@ -535,7 +568,7 @@ async function downloadArticleContent(
   }
 }
 
-async function processDownloadQueue(sessionId: string, auth: { cookieString: string; headers: Record<string, string> }): Promise<void> {
+async function processDownloadQueue(sessionId: string, auth: { cookieString: string; headers: Record<string, string> }, updateSession: boolean = true): Promise<void> {
   const queue = downloadQueues.get(sessionId);
   if (!queue) return;
 
@@ -547,7 +580,7 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
       if (Date.now() >= rateLimitEndTime) {
         isRateLimited = false;
       }
-      processDownloadQueue(sessionId, auth);
+      processDownloadQueue(sessionId, auth, updateSession);
     }, Math.min(waitTime * 1000, 60000));
     return;
   }
@@ -577,9 +610,11 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
     queue.activeDownloads++;
 
     // Update current download item in session
-    exportStore.updateDownloadTask(sessionId, {
-      currentID: pending.article.savedId
-    });
+    if (updateSession) {
+      exportStore.updateDownloadTask(sessionId, {
+        currentID: pending.article.savedId
+      });
+    }
 
     downloadArticleContent(sessionId, pending.article, auth)
       .then(() => {
@@ -587,10 +622,12 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
         resetBackoff(); // Reset backoff on successful download
         
         // Update download count
-        const completedCount = queue.articles.filter(item => item.status === 'completed').length;
-        exportStore.updateDownloadTask(sessionId, {
-          count: completedCount
-        });
+        if (updateSession) {
+          const completedCount = queue.articles.filter(item => item.status === 'completed').length;
+          exportStore.updateDownloadTask(sessionId, {
+            count: completedCount
+          });
+        }
       })
       .catch((error) => {
         pending.status = 'error';
@@ -604,10 +641,12 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
           console.log(`🛑 Rate limit detected. Pausing downloads for ${Math.round(backoffTime/1000)} seconds...`);
           
           // Update rate limit status in session
-          exportStore.updateDownloadTask(sessionId, {
-            rateLimitedAt: new Date(),
-            rateLimitRetryAfter: Math.round(backoffTime / 1000)
-          });
+          if (updateSession) {
+            exportStore.updateDownloadTask(sessionId, {
+              rateLimitedAt: new Date(),
+              rateLimitRetryAfter: Math.round(backoffTime / 1000)
+            });
+          }
         }
       })
       .finally(() => {
@@ -622,15 +661,17 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
           const completedCount = queue.articles.filter(item => item.status === 'completed').length;
           const errorCount = queue.articles.filter(item => item.status === 'error').length;
           
-          exportStore.updateDownloadTask(sessionId, {
-            status: errorCount > 0 && completedCount === 0 ? 'error' : 'completed',
-            endedAt: new Date(),
-            currentID: undefined
-          });
+          if (updateSession) {
+            exportStore.updateDownloadTask(sessionId, {
+              status: errorCount > 0 && completedCount === 0 ? 'error' : 'completed',
+              endedAt: new Date(),
+              currentID: undefined
+            });
+          }
         }
         
         // Process next item
-        processDownloadQueue(sessionId, auth);
+        processDownloadQueue(sessionId, auth, updateSession);
       });
   }
 }
@@ -638,7 +679,8 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
 export function startArticleDownloads(
   sessionId: string,
   articles: Article[],
-  auth: { cookieString: string; headers: Record<string, string> }
+  auth: { cookieString: string; headers: Record<string, string> },
+  updateSession: boolean = true
 ): void {
   let queue = downloadQueues.get(sessionId);
   
@@ -674,17 +716,19 @@ export function startArticleDownloads(
     }
   });
 
-  // Update download task status in session
-  exportStore.updateDownloadTask(sessionId, {
-    status: 'running',
-    startedAt: new Date(),
-    count: 0,
-    total: articles.length,
-    pid: process.pid
-  });
+  // Update download task status in session only if requested
+  if (updateSession) {
+    exportStore.updateDownloadTask(sessionId, {
+      status: 'running',
+      startedAt: new Date(),
+      count: 0,
+      total: articles.length,
+      pid: process.pid
+    });
+  }
 
   // Start processing the queue
-  processDownloadQueue(sessionId, auth);
+  processDownloadQueue(sessionId, auth, updateSession);
   
   // Also start a separate process to check for missing images in completed articles
   processExistingArticlesForImages(sessionId, articles, auth);
@@ -739,6 +783,22 @@ export function stopDownloads(sessionId: string): void {
   
   // The queue will be cleaned up by the processDownloadQueue function
   // when it checks the session status
+}
+
+// Download a single article without updating session task status
+export async function downloadSingleArticle(
+  sessionId: string,
+  article: Article,
+  auth: { cookieString: string; headers: Record<string, string> }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Download article content directly without going through the queue
+    await downloadArticleContent(sessionId, article, auth);
+    return { success: true };
+  } catch (error: any) {
+    console.error(`Error downloading article ${article.savedId}:`, error.message);
+    return { success: false, error: error.message };
+  }
 }
 
 export function getDownloadStatus(sessionId: string, articles?: any[]): {

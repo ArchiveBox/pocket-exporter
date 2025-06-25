@@ -3,8 +3,7 @@ import path from 'path';
 import { Article } from '@/types/article';
 import { enrichArticleWithFallbackImages } from './image-utils';
 
-// Import common helpers
-const { deepMerge, isObject, getArticleDir } = require('../helpers');
+import { deepMerge, isObject, getArticleDir } from './helpers';
 
 interface ExportSession {
   id: string; // session id based on pocket consumer key

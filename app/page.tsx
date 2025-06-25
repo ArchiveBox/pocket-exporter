@@ -776,7 +776,7 @@ export default function PocketExportApp() {
                               // Trigger download for this article
                               try {
                                 const response = await fetch(
-                                  `/api/export/download-single?sessionId=${sessionId}&articleId=${article.savedId}`,
+                                  `/api/task/download-single/start?sessionId=${sessionId}&articleId=${article.savedId}`,
                                   { method: 'POST' }
                                 );
                                 
@@ -849,7 +849,7 @@ export default function PocketExportApp() {
                       
                       <div className="mt-2 pt-2 border-t">
                         <a 
-                          href={`https://getpocket.com/read/${article.item.readerSlug}`}
+                          href={`https://getpocket.com/read/${article.item.readerSlug || article.savedId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-gray-400 hover:text-gray-600 transition-colors"

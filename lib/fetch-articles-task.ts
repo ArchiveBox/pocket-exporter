@@ -2,9 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { exportStore } from './export-store';
 import { Article } from '@/types/article';
-
-// Helper functions from the original helpers.js
-const { 
+import { 
   getHeaders, 
   getGraphQLEndpoint, 
   deepMerge, 
@@ -15,7 +13,7 @@ const {
   buildGraphQLQuery, 
   GRAPHQL_FRAGMENTS, 
   makeGraphQLRequest 
-} = require('../helpers');
+} from './helpers';
 
 const ARTICLES_PER_REQUEST = 1000;
 
@@ -90,7 +88,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   }
 
-  // Build the GraphQL query
+  // Build the GraphQL query - matches EXACTLY what Pocket returns
   const query = buildGraphQLQuery(`
     query GetSavedItems(
       $filter: SavedItemsFilter
@@ -112,38 +110,6 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
                   shareId: id
                   itemId
                   givenUrl
-                  resolvedId
-                  resolvedUrl
-                  readerSlug
-                  domain
-                  domainMetadata {
-                    name
-                  }
-                  excerpt
-                  topImageUrl
-                  images {
-                    caption
-                    credit
-                    height
-                    imageId
-                    src
-                    width
-                  }
-                  videos {
-                    vid
-                    videoId
-                    type
-                    src
-                  }
-                  collection {
-                    slug
-                  }
-                  authors {
-                    id
-                    name
-                    url
-                  }
-                  datePublished
                   preview {
                     ...ItemPreview
                   }
@@ -271,7 +237,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       for (const edge of edges) {
         if (!edge || !edge.node) continue;
         const article = edge.node;
-        if (!article.id) continue;
+        if (!article.savedId) continue;
         
         // Check if we should stop before processing each article
         if (shouldStop()) {
@@ -283,10 +249,10 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
         pageArticleCount++;
         
         // Deep merge if article already exists
-        if (articlesMap[article.id]) {
-          articlesMap[article.id] = deepMerge(articlesMap[article.id], article);
+        if (articlesMap[article.savedId]) {
+          articlesMap[article.savedId] = deepMerge(articlesMap[article.savedId], article);
         } else {
-          articlesMap[article.id] = article;
+          articlesMap[article.savedId] = article;
         }
       }
       
@@ -307,10 +273,10 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       });
       
       // Save individual article files
-      const articlesToSave = edges.map((edge: any) => edge.node).filter((a: any) => a && a.id);
+      const articlesToSave = edges.map((edge: any) => edge.node).filter((a: any) => a && a.savedId);
       for (const article of articlesToSave) {
         // Use savedId instead of id for the directory name
-        const savedId = article.savedId || article.id;
+        const savedId = article.savedId;
         const articleDir = path.join(ARTICLES_DIR, savedId);
         
         // Create article directory if it doesn't exist
@@ -337,7 +303,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       // Update session with current cursor and progress
       exportStore.updateFetchTask(sessionId, {
         cursor: pageInfo.endCursor || cursor,
-        currentID: edges.length > 0 ? edges[edges.length - 1].node?.id : undefined
+        currentID: edges.length > 0 ? edges[edges.length - 1].node?.savedId : undefined
       });
       
       // Check if there are more pages
@@ -380,7 +346,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   const finalStatus = shouldStop() ? 'stopped' : 'completed';
   exportStore.updateFetchTask(sessionId, {
     status: finalStatus,
-    count: articlesArray.length,
+    count: totalFetched,
     total: articlesArray.length,
     endedAt: new Date(),
     cursor: undefined,

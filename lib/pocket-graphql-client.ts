@@ -1,6 +1,7 @@
 import https from 'https';
+import { getHeaders, getGraphQLEndpoint, respectRateLimit, isRateLimitResponse, isAuthError, handleRateLimit, buildGraphQLQuery } from './helpers';
 
-const { getHeaders, getGraphQLEndpoint, respectRateLimit, isRateLimitResponse, isAuthError, handleRateLimit, buildGraphQLQuery, CONSUMER_KEY } = require('../helpers');
+const CONSUMER_KEY = process.env.POCKET_CONSUMER_KEY || '94110-6d5ff7a89d72c869766af0e0';
 
 const SAVED_ITEMS_QUERY = buildGraphQLQuery(`
   query GetSavedItems(
