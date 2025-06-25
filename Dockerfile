@@ -2,7 +2,7 @@
 FROM ubuntu:24.04
 
 # Install Node.js and npm
-RUN apt-get update && apt-get install -y \
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
