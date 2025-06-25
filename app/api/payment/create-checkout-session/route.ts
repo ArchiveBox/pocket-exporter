@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { updatePaymentData, readPaymentData } from '@/lib/session-utils';
 
+// Price configuration
+const PRICE_AMOUNT = 800; // $8.00 in cents
+const PRICE_CURRENCY = 'usd';
+
 export async function POST(request: NextRequest) {
   try {
     const { sessionId } = await request.json();
@@ -71,18 +75,25 @@ export async function POST(request: NextRequest) {
         // product: 'prod_SYxIQkjLRLagZc',  // testing
         product: 'prod_SZ0ArYlasOFd3v',
         active: true,
-        limit: 1
+        limit: 100  // Get all prices to find the right one
       });
       
-      if (prices.data.length > 0) {
-        priceId = prices.data[0].id;
+      // Find the price that matches our desired amount
+      const matchingPrice = prices.data.find(price => 
+        price.unit_amount === PRICE_AMOUNT && 
+        price.currency === PRICE_CURRENCY &&
+        price.type === 'one_time'
+      );
+      
+      if (matchingPrice) {
+        priceId = matchingPrice.id;
       } else {
-        // Create a price if none exists
+        // Create a price if none exists with the correct amount
         const price = await stripe.prices.create({
           // product: 'prod_SYxIQkjLRLagZc',  // testing
           product: 'prod_SZ0ArYlasOFd3v',
-          unit_amount: 1500,
-          currency: 'usd',
+          unit_amount: PRICE_AMOUNT,
+          currency: PRICE_CURRENCY,
         });
         priceId = price.id;
       }
@@ -98,12 +109,12 @@ export async function POST(request: NextRequest) {
       quantity: 1,
     }] : [{
       price_data: {
-        currency: 'usd',
+        currency: PRICE_CURRENCY,
         product_data: {
           name: 'Pocket Exporter Unlimited Access',
           description: 'Export unlimited articles from your Pocket account'
         },
-        unit_amount: 1500, // $15.00 in cents
+        unit_amount: PRICE_AMOUNT,
       },
       quantity: 1,
     }];
@@ -129,8 +140,8 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         stripeSessionId: checkoutSession.id,
         stripePaymentIntentId: checkoutSession.payment_intent as string || undefined,
-        amount: checkoutSession.amount_total || 1500,
-        currency: checkoutSession.currency || 'usd',
+        amount: checkoutSession.amount_total || PRICE_AMOUNT,
+        currency: checkoutSession.currency || PRICE_CURRENCY,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       }

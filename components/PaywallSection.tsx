@@ -69,7 +69,7 @@ export function PaywallSection({ sessionId, articleCount }: PaywallSectionProps)
           </p>
           <p className="text-gray-700">
             You've exported {articleCount} articles so far. To continue exporting all your Pocket articles, 
-            please complete a one-time payment of $15.00 to support the service.
+            please complete a one-time payment of $8.00 to support the service.
           </p>
         </CardDescription>
       </CardHeader>
