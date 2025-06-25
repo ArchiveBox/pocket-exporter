@@ -93,6 +93,56 @@ export function hasValidPayment(sessionId: string): boolean {
          paymentData?.payment?.status === 'completed';
 }
 
+// Helper function to fetch complete payment details from Stripe
+export async function fetchCompletePaymentDetails(
+  checkoutSessionId?: string,
+  paymentIntentId?: string
+): Promise<Partial<PaymentData>> {
+  const { stripe } = await import('@/lib/stripe');
+  let paymentDetails: Partial<PaymentData> = {};
+  
+  try {
+    // If we have a checkout session ID, retrieve it
+    if (checkoutSessionId) {
+      const checkoutSession = await stripe.checkout.sessions.retrieve(checkoutSessionId);
+      paymentDetails.stripeSessionId = checkoutSession.id;
+      paymentDetails.amount = checkoutSession.amount_total || 0;
+      paymentDetails.currency = checkoutSession.currency || 'usd';
+      
+      // Get payment intent ID from checkout session if not provided
+      if (!paymentIntentId && checkoutSession.payment_intent) {
+        paymentIntentId = checkoutSession.payment_intent as string;
+      }
+    }
+    
+    // If we have a payment intent ID, retrieve it and the charge
+    if (paymentIntentId) {
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      paymentDetails.stripePaymentIntentId = paymentIntent.id;
+      paymentDetails.amount = paymentIntent.amount || paymentDetails.amount;
+      paymentDetails.currency = paymentIntent.currency || paymentDetails.currency;
+      
+      // Get charge details for receipt
+      if (paymentIntent.latest_charge) {
+        try {
+          const charge = await stripe.charges.retrieve(paymentIntent.latest_charge as string);
+          paymentDetails.stripeChargeId = charge.id;
+          paymentDetails.receiptUrl = charge.receipt_url || undefined;
+          paymentDetails.receiptEmail = charge.receipt_email || undefined;
+          paymentDetails.customerId = charge.customer as string || undefined;
+          console.log(`Retrieved charge ${charge.id} with receipt: ${charge.receipt_url}`);
+        } catch (chargeError) {
+          console.error('Error retrieving charge:', chargeError);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching complete payment details:', error);
+  }
+  
+  return paymentDetails;
+}
+
 export function canFetchMoreArticles(sessionId: string, currentArticleCount: number): boolean {
   const paymentData = readPaymentData(sessionId);
   

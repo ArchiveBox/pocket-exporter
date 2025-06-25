@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
-import { updatePaymentData, readPaymentData } from '@/lib/session-utils';
+import { updatePaymentData, readPaymentData, fetchCompletePaymentDetails } from '@/lib/session-utils';
 import { headers } from 'next/headers';
 
 export async function POST(request: NextRequest) {
@@ -33,28 +33,11 @@ export async function POST(request: NextRequest) {
 
     if (appSessionId) {
       try {
-        let chargeData = {};
-        
-        // Retrieve charge information if payment intent exists
-        if (checkoutSession.payment_intent) {
-          try {
-            const paymentIntent = await stripe.paymentIntents.retrieve(checkoutSession.payment_intent as string);
-            if (paymentIntent.latest_charge) {
-              const charge = await stripe.charges.retrieve(paymentIntent.latest_charge as string);
-              chargeData = {
-                stripeChargeId: charge.id,
-                receiptUrl: charge.receipt_url,
-                receiptEmail: charge.receipt_email,
-                customerId: charge.customer as string,
-                currency: charge.currency,
-                amount: charge.amount
-              };
-              console.log(`Retrieved charge ${charge.id} for payment intent ${paymentIntent.id}`);
-            }
-          } catch (chargeError) {
-            console.error('Error retrieving charge:', chargeError);
-          }
-        }
+        // Fetch complete payment details including charge and receipt
+        const completeDetails = await fetchCompletePaymentDetails(
+          checkoutSession.id,
+          checkoutSession.payment_intent as string
+        );
         
         const existingData = updatePaymentData(appSessionId, {
           hasUnlimitedAccess: true,
@@ -67,7 +50,7 @@ export async function POST(request: NextRequest) {
             createdAt: new Date(checkoutSession.created * 1000).toISOString(),
             completedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            ...chargeData
+            ...completeDetails
           }
         });
         
@@ -89,24 +72,11 @@ export async function POST(request: NextRequest) {
         // Check if we already have a payment record
         const existingPayment = readPaymentData(appSessionId);
         
-        let chargeData = {};
-        // Retrieve charge information
-        if (paymentIntent.latest_charge) {
-          try {
-            const charge = await stripe.charges.retrieve(paymentIntent.latest_charge as string);
-            chargeData = {
-              stripeChargeId: charge.id,
-              receiptUrl: charge.receipt_url,
-              receiptEmail: charge.receipt_email,
-              customerId: charge.customer as string,
-              currency: charge.currency,
-              amount: charge.amount
-            };
-            console.log(`Retrieved charge ${charge.id} for payment intent ${paymentIntent.id}`);
-          } catch (chargeError) {
-            console.error('Error retrieving charge:', chargeError);
-          }
-        }
+        // Fetch complete payment details including charge and receipt
+        const completeDetails = await fetchCompletePaymentDetails(
+          existingPayment?.payment?.stripeSessionId,
+          paymentIntent.id
+        );
         
         const updatedData = updatePaymentData(appSessionId, {
           hasUnlimitedAccess: true,
@@ -119,7 +89,7 @@ export async function POST(request: NextRequest) {
             createdAt: existingPayment?.payment?.createdAt || new Date().toISOString(),
             completedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            ...chargeData
+            ...completeDetails
           }
         });
         

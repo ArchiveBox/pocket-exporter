@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exportStore } from '@/lib/export-store';
 import { getDownloadStatus } from '@/lib/article-downloader';
-import { getSessionSizeInMB, readPaymentData, updatePaymentData } from '@/lib/session-utils';
+import { getSessionSizeInMB, readPaymentData, updatePaymentData, fetchCompletePaymentDetails } from '@/lib/session-utils';
 import { stripe } from '@/lib/stripe';
 import { execSync } from 'child_process';
 
@@ -134,6 +134,13 @@ export async function GET(request: NextRequest) {
           }
         } else if (isPaymentComplete && paymentData.payment.status !== 'completed') {
           console.log(`Updating payment status to completed for session ${sessionId}`);
+          
+          // Fetch complete payment details including charge and receipt
+          const completeDetails = await fetchCompletePaymentDetails(
+            stripeSession.id,
+            stripeSession.payment_intent as string
+          );
+          
           paymentData = updatePaymentData(sessionId, {
             hasUnlimitedAccess: true,
             payment: {
@@ -143,10 +150,11 @@ export async function GET(request: NextRequest) {
               amount: stripeSession.amount_total || 0,
               currency: stripeSession.currency || 'usd',
               completedAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
+              ...completeDetails // This includes receiptUrl, chargeId, etc.
             }
           });
-          console.log(`Payment verified and updated for session ${sessionId}`);
+          console.log(`Payment verified and updated for session ${sessionId} with receipt: ${paymentData.payment?.receiptUrl}`);
         }
       } catch (error) {
         console.error('Error checking Stripe payment status:', error);
