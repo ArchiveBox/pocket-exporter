@@ -11,6 +11,7 @@ export interface Article {
   favoritedAt: number | null;
   isArchived: boolean;
   archivedAt: number | null;
+  archivedotorg_url?: string;
   tags: Array<{
     id: string;
     name: string;

@@ -242,6 +242,11 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
         // Always create a copy to avoid modifying the original
         const articleCopy = JSON.parse(JSON.stringify(article));
         
+        // Add the Archive.org URL
+        if (articleCopy.url) {
+          articleCopy.archivedotorg_url = `https://web.archive.org/web/${articleCopy.url}`;
+        }
+        
         // Check if article HTML content is included (should only be at item.article)
         if (articleCopy.item?.article) {
           const articleContent = articleCopy.item.article;
