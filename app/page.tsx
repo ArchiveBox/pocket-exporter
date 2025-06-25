@@ -215,6 +215,16 @@ export default function PocketExportApp() {
     const fetchStatus = async () => {
       try {
         const statusResponse = await fetch(`/api/status?session=${sessionId}`)
+        
+        // Check if session was not found
+        if (statusResponse.status === 404) {
+          console.log('Session not found, redirecting to homepage')
+          // Clear the session and redirect to homepage
+          setSessionId('')
+          window.location.href = '/'
+          return
+        }
+        
         const statusData = await statusResponse.json()
 
         // Update the entire session data
