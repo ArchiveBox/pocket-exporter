@@ -3,6 +3,7 @@ import { exportStore } from '@/lib/export-store';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { withTiming } from '@/lib/with-timing';
 
 interface ParsedAuth {
   cookies: Record<string, string>;
@@ -57,7 +58,7 @@ function parseFetchCode(fetchCode: string): ParsedAuth {
   };
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withTiming(async (request: NextRequest) => {
   try {
     const body = await request.json();
     
@@ -186,4 +187,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

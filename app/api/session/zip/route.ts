@@ -3,8 +3,9 @@ import { exportStore } from '@/lib/export-store';
 import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
+import { withTiming } from '@/lib/with-timing';
 
-export async function GET(request: NextRequest) {
+export const GET = withTiming(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session');
@@ -76,4 +77,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

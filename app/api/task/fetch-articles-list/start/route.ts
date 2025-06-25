@@ -3,8 +3,9 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { exportStore } from '@/lib/export-store';
 import { hasValidPayment } from '@/lib/session-utils';
+import { withTiming } from '@/lib/with-timing';
 
-export async function POST(request: NextRequest) {
+export const POST = withTiming(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session');
@@ -89,4 +90,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

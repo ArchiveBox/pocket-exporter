@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { updatePaymentData, readPaymentData, fetchCompletePaymentDetails } from '@/lib/session-utils';
 import { headers } from 'next/headers';
+import { withTiming } from '@/lib/with-timing';
 
-export async function POST(request: NextRequest) {
+export const POST = withTiming(async (request: NextRequest) => {
   const body = await request.text();
   const signature = headers().get('stripe-signature') as string;
 
@@ -101,4 +102,4 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ received: true });
-}
+});

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { exportStore } from '@/lib/export-store';
 import fs from 'fs';
 import path from 'path';
+import { withTiming } from '@/lib/with-timing';
 
-export async function DELETE(request: NextRequest) {
+export const DELETE = withTiming(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session');
@@ -61,4 +62,4 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

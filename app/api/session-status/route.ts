@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
+import { withTiming } from '@/lib/with-timing';
 
-export async function GET(request: NextRequest) {
+export const GET = withTiming(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session_id');
@@ -26,4 +27,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

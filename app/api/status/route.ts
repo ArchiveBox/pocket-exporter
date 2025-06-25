@@ -4,8 +4,9 @@ import { getDownloadStatus } from '@/lib/article-downloader';
 import { getSessionSizeInMB, readPaymentData, updatePaymentData, fetchCompletePaymentDetails } from '@/lib/session-utils';
 import { stripe } from '@/lib/stripe';
 import { execSync } from 'child_process';
+import { withTiming } from '@/lib/with-timing';
 
-export async function GET(request: NextRequest) {
+export const GET = withTiming(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session');
@@ -229,4 +230,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

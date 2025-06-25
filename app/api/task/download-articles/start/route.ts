@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { startArticleDownloads } from '@/lib/article-downloader';
 import { exportStore } from '@/lib/export-store';
+import { withTiming } from '@/lib/with-timing';
 
-export async function POST(request: NextRequest) {
+export const POST = withTiming(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session');
@@ -64,4 +65,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

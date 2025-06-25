@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
 import { updatePaymentData, readPaymentData } from '@/lib/session-utils';
+import { withTiming } from '@/lib/with-timing';
 
 // Price configuration
 const PRICE_AMOUNT = 800; // $8.00 in cents
 const PRICE_CURRENCY = 'usd';
 
-export async function POST(request: NextRequest) {
+export const POST = withTiming(async (request: NextRequest) => {
   try {
     const { sessionId } = await request.json();
     
@@ -159,4 +160,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

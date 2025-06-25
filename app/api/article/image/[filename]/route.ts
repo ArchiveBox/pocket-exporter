@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { withTiming } from '@/lib/with-timing';
 
-export async function GET(
+export const GET = withTiming(async (
   request: NextRequest,
   { params }: { params: Promise<{ filename: string }> }
 ) {
@@ -79,4 +80,4 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});
