@@ -28,17 +28,32 @@ export async function GET(request: NextRequest) {
         console.log('Session not found:', sessionId);
       }
       
-      // For old format sessions, return empty session to trigger redirect
+      // For old format sessions, return a response that triggers re-authentication
       if (isOldFormat) {
-        // Return a response with no session ID - this might make the old frontend
-        // think it has no session and redirect to homepage
+        // Return a session with an authentication error - this should make the old
+        // frontend show the auth form and stop polling
         return NextResponse.json({
-          // No id field - might trigger redirect
-          auth: null,
-          currentFetchTask: null,
-          currentDownloadTask: null,
+          id: sessionId,
+          auth: null, // No auth means not authenticated
+          currentFetchTask: {
+            status: 'error',
+            error: 'Authentication expired',
+            count: 0,
+            total: 0
+          },
+          currentDownloadTask: {
+            status: 'idle',
+            count: 0,
+            total: 0
+          },
           articles: [],
-          downloadStatus: null,
+          downloadStatus: {
+            total: 0,
+            completed: 0,
+            downloading: 0,
+            errors: 0,
+            articleStatus: {}
+          },
           sessionSizeMB: 0,
           paymentData: null
         });
