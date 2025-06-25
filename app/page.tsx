@@ -1082,7 +1082,7 @@ export default function PocketExportApp() {
               Delete All Session Data
             </Button>
             <p className="text-xs text-gray-500 mt-2">
-              This will permanently delete all {articles.length} articles and session data. It will not affect your data on Pocket.
+              This will permanently delete {articles.length} articles and their content + your Pocket credentials from our servers. It will not affect your data on Pocket or your payment status.
             </p>
           </div>
         )}
