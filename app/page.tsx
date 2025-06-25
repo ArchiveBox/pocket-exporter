@@ -455,11 +455,11 @@ export default function PocketExportApp() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Pocket Data Exporter</h1>
-          <p className="text-lg text-gray-600 mb-6">
+          <h2 className="text-lg text-gray-600 mb-6">
             Export your saved bookmarks and article content from Mozilla Pocket before they shut down in October 2025.<br/>
             Export all your bookmark URLs, titles, excerpts, tags, archived article text (for Pocket Premium users), and more...
             <br/>
-          </p>
+          </h2>
           
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-4 max-w-2xl mx-auto">
             <i className="text-gray-400">Did you pay for Pocket Premium for years to get their "Permanent Library" feature?</i>
