@@ -122,7 +122,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   // Main fetch loop
   while (hasMore) {
     // Check if we should stop
-    if (shouldStop()) {
+    if (await shouldStop()) {
       console.log('\n⏹️  Fetch task stopped by user');
       break;
     }
@@ -175,14 +175,14 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
         if (retryCount < maxRetries) {
           retryCount++;
           const retryAfter = await handleRateLimit({ code: '161' });
-          exportStore.updateFetchTask(sessionId, {
+          await exportStore.updateFetchTask(sessionId, {
             rateLimitedAt: new Date(),
             rateLimitRetryAfter: Math.round(retryAfter / 1000)
           });
           continue; // Retry the same page
         } else {
           console.error('Max retries reached for rate limiting. Stopping.');
-          exportStore.updateFetchTask(sessionId, {
+          await exportStore.updateFetchTask(sessionId, {
             status: 'error',
             error: 'Max rate limit retries exceeded',
             endedAt: new Date()
@@ -196,7 +196,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       
       if (!response.data || !response.data.user || !response.data.user.savedItems) {
         console.error('Invalid response structure:', JSON.stringify(response, null, 2));
-        exportStore.updateFetchTask(sessionId, {
+        await exportStore.updateFetchTask(sessionId, {
           status: 'error',
           error: 'Invalid response structure',
           endedAt: new Date()
@@ -223,7 +223,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       const reportedTotal = savedItems.totalCount || 0;
       const estimatedTotal = Math.max(reportedTotal, totalFetched);
       
-      exportStore.updateFetchTask(sessionId, {
+      await exportStore.updateFetchTask(sessionId, {
         count: totalFetched,
         total: pageInfo.hasNextPage ? estimatedTotal + 1000 : estimatedTotal, // Add buffer if more pages exist
         rateLimitedAt: undefined,
@@ -238,9 +238,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
         const articleDir = path.join(ARTICLES_DIR, savedId);
         
         // Create article directory if it doesn't exist
-        if (!fs.existsSync(articleDir)) {
-          fs.mkdirSync(articleDir, { recursive: true });
-        }
+        await fs.promises.mkdir(articleDir, { recursive: true }).catch(() => {});
         
         // Always create a copy to avoid modifying the original
         const articleCopy = JSON.parse(JSON.stringify(article));
@@ -252,17 +250,17 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
           
           // Save the HTML content separately
           const articleHtmlPath = path.join(articleDir, 'article.html');
-          fs.writeFileSync(articleHtmlPath, articleContent);
+          await fs.promises.writeFile(articleHtmlPath, articleContent);
           console.log(`  ✓ Saved article HTML for ${savedId}`);
         }
         
         // Always save the metadata (without article content)
         const articlePath = path.join(articleDir, 'index.json');
-        fs.writeFileSync(articlePath, JSON.stringify(articleCopy, null, 2));
+        await fs.promises.writeFile(articlePath, JSON.stringify(articleCopy, null, 2));
       }
       
       // Update session with current cursor and progress
-      exportStore.updateFetchTask(sessionId, {
+      await exportStore.updateFetchTask(sessionId, {
         cursor: pageInfo.endCursor || cursor,
         currentID: edges.length > 0 ? edges[edges.length - 1].node?.savedId : undefined
       });
@@ -277,7 +275,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
     } catch (error: any) {
       console.error('Error fetching articles:', error);
       
-      exportStore.updateFetchTask(sessionId, {
+      await exportStore.updateFetchTask(sessionId, {
         status: 'error',
         error: error.message,
         endedAt: new Date()
@@ -292,8 +290,8 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   console.log(`Articles saved to: ${ARTICLES_DIR}`);
   
   // Update final status
-  const finalStatus = shouldStop() ? 'stopped' : 'completed';
-  exportStore.updateFetchTask(sessionId, {
+  const finalStatus = await shouldStop() ? 'stopped' : 'completed';
+  await exportStore.updateFetchTask(sessionId, {
     status: finalStatus,
     count: totalFetched,
     total: totalFetched,
