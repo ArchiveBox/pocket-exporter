@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get all articles for the session
-    const articles = exportStore.getSessionArticles(sessionId);
+    const articles = await exportStore.getSessionArticlesAsync(sessionId);
     
     if (articles.length === 0) {
       return NextResponse.json(

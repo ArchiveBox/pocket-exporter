@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all articles for the session
-    const articles = exportStore.getSessionArticles(sessionId);
+    const articles = await exportStore.getSessionArticlesAsync(sessionId);
     
     // Create session data with articles merged in
     const sessionData = {

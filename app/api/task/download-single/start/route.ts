@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the specific article
-    const articles = exportStore.getSessionArticles(sessionId);
+    const articles = await exportStore.getSessionArticlesAsync(sessionId);
     const article = articles.find(a => a.savedId === articleId);
     
     if (!article) {
