@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Always return the full list of articles from disk
-    const allArticles = exportStore.getSessionArticles(sessionId);
+    const allArticles = await exportStore.getSessionArticlesAsync(sessionId);
 
     // Check if download task process is actually running
     if (session.currentDownloadTask && 

@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
     let cookieString: string;
     let headers: Record<string, string>;
     let consumerKey: string | undefined;
+    const oldSessionId = body.oldSessionId; // Get the old session ID if updating
     
     // Check if we received a fetch code or already parsed data
     if (body.fetchCode) {
@@ -153,31 +154,42 @@ export async function POST(request: NextRequest) {
       headers
     }, sessionUrl.split('?')[0] + `?session=${sessionId}`);
 
-    // Create symlinks from old session formats to maintain compatibility
-    const sessionsDir = path.join(process.cwd(), 'sessions');
-    
-    // Look for existing sessions that might be from the same user
-    // We'll check for old consumer-key based session IDs
-    if (consumerKey) {
-      const oldSessionId = `${consumerKey.substring(0, 5)}-${consumerKey.substring(consumerKey.length - 25)}`;
+    // Handle bearer token change - create symlink from new session to old
+    if (oldSessionId && oldSessionId !== sessionId) {
+      const sessionsDir = path.join(process.cwd(), 'sessions');
       const oldSessionPath = path.join(sessionsDir, oldSessionId);
       const newSessionPath = path.join(sessionsDir, sessionId);
       
-      // If old session exists and new session is different, create symlink
-      if (fs.existsSync(oldSessionPath) && oldSessionId !== sessionId) {
-        try {
-          // Remove symlink if it already exists
-          if (fs.existsSync(oldSessionPath) && fs.lstatSync(oldSessionPath).isSymbolicLink()) {
-            fs.unlinkSync(oldSessionPath);
+      try {
+        // Check if old session exists and is a real directory
+        if (fs.existsSync(oldSessionPath) && fs.lstatSync(oldSessionPath).isDirectory()) {
+          // Check if new session path already exists
+          if (fs.existsSync(newSessionPath)) {
+            const stats = fs.lstatSync(newSessionPath);
+            
+            if (stats.isSymbolicLink()) {
+              // If it's already a symlink, remove it to recreate
+              fs.unlinkSync(newSessionPath);
+            } else if (stats.isDirectory()) {
+              // If it's a real directory, don't overwrite it
+              console.log(`Warning: ${newSessionPath} is a real directory, not creating symlink`);
+              return NextResponse.json({ 
+                success: true,
+                sessionId,
+                warning: 'New session path is a real directory, not overwriting'
+              });
+            }
           }
           
-          // Create symlink from old to new
-          fs.symlinkSync(newSessionPath, oldSessionPath, 'dir');
-          console.log(`Created symlink: ${oldSessionId} -> ${sessionId}`);
-        } catch (error) {
-          console.error('Error creating symlink:', error);
-          // Not critical, so we continue
+          // Create symlink from new to old (new session points to old session data)
+          fs.symlinkSync(`./${oldSessionId}`, newSessionPath, 'dir');
+          console.log(`Created symlink: ${sessionId} -> ${oldSessionId}`);
+        } else {
+          console.log(`Old session ${oldSessionId} does not exist or is not a directory`);
         }
+      } catch (error) {
+        console.error('Error creating symlink:', error);
+        // Not critical, so we continue
       }
     }
 

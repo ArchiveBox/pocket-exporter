@@ -188,7 +188,10 @@ export default function PocketExportApp() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ fetchCode: fetchRequest }),
+        body: JSON.stringify({ 
+          fetchCode: fetchRequest,
+          oldSessionId: sessionId  // Pass current session ID if updating
+        }),
       })
 
       const data = await response.json()
