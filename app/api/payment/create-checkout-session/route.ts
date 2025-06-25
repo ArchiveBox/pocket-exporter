@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
     try {
       // List existing prices for the product
       const prices = await stripe.prices.list({
-        product: 'prod_SYxIQkjLRLagZc',
+        // product: 'prod_SYxIQkjLRLagZc',  // testing
+        product: 'prod_SZ0ArYlasOFd3v',
         active: true,
         limit: 1
       });
@@ -78,7 +79,8 @@ export async function POST(request: NextRequest) {
       } else {
         // Create a price if none exists
         const price = await stripe.prices.create({
-          product: 'prod_SYxIQkjLRLagZc',
+          // product: 'prod_SYxIQkjLRLagZc',  // testing
+          product: 'prod_SZ0ArYlasOFd3v',
           unit_amount: 1500,
           currency: 'usd',
         });
