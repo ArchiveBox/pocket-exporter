@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { atomicWriteJson, readJsonFile } from './atomic-write';
 
 const SESSIONS_DIR = path.join(process.cwd(), 'sessions');
 
@@ -36,8 +37,7 @@ export async function getPaymentsPath(sessionId: string): Promise<string> {
 export async function readPaymentData(sessionId: string): Promise<SessionPaymentData | null> {
   try {
     const paymentsPath = await getPaymentsPath(sessionId);
-    const data = await fs.promises.readFile(paymentsPath, 'utf8');
-    return JSON.parse(data);
+    return await readJsonFile<SessionPaymentData>(paymentsPath);
   } catch (error: any) {
     if (error.code !== 'ENOENT') {
       console.error('Error reading payment data:', error);
@@ -50,11 +50,11 @@ export async function writePaymentData(sessionId: string, data: SessionPaymentDa
   try {
     const paymentsPath = await getPaymentsPath(sessionId);
     console.log(`Writing payment data to ${paymentsPath}:`, JSON.stringify(data, null, 2));
-    await fs.promises.writeFile(paymentsPath, JSON.stringify(data, null, 2));
+    await atomicWriteJson(paymentsPath, data);
     
     // Verify the write
-    const verifyData = await fs.promises.readFile(paymentsPath, 'utf8');
-    console.log(`Verified written data:`, verifyData);
+    const verifyData = await readJsonFile(paymentsPath);
+    console.log(`Verified written data:`, JSON.stringify(verifyData, null, 2));
     
     return data;
   } catch (error) {
@@ -64,22 +64,18 @@ export async function writePaymentData(sessionId: string, data: SessionPaymentDa
 }
 
 export async function updatePaymentData(sessionId: string, updates: Partial<SessionPaymentData>): Promise<SessionPaymentData> {
-  const existingData = await readPaymentData(sessionId) || {
+  const paymentsPath = await getPaymentsPath(sessionId);
+  
+  // Use atomic merge write to handle concurrent updates
+  await atomicWriteJson(paymentsPath, updates, { merge: true });
+  
+  // Read back the merged data
+  const result = await readPaymentData(sessionId);
+  return result || {
     articlesFetchedBeforePayment: 0,
-    hasUnlimitedAccess: false
+    hasUnlimitedAccess: false,
+    ...updates
   };
-  
-  // Deep merge for nested payment object
-  const updatedData: SessionPaymentData = {
-    ...existingData,
-    ...updates,
-    payment: updates.payment ? {
-      ...existingData.payment,
-      ...updates.payment
-    } : existingData.payment
-  };
-  
-  return await writePaymentData(sessionId, updatedData);
 }
 
 export async function hasValidPayment(sessionId: string): Promise<boolean> {

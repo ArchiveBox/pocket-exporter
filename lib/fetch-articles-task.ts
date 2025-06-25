@@ -3,6 +3,7 @@ import path from 'path';
 import { exportStore } from './export-store';
 import { Article } from '@/types/article';
 import { canFetchMoreArticles, recordArticlesFetched, hasValidPayment } from './session-utils';
+import { atomicWriteJson } from './atomic-write';
 import { 
   getHeaders, 
   getGraphQLEndpoint, 
@@ -254,7 +255,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
         
         // Always save the metadata (without article content)
         const articlePath = path.join(articleDir, 'index.json');
-        await fs.promises.writeFile(articlePath, JSON.stringify(articleCopy, null, 2));
+        await atomicWriteJson(articlePath, articleCopy);
       }
       
       // Update session with current cursor and progress

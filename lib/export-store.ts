@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { Article } from '@/types/article';
 import { enrichArticleWithFallbackImages } from './image-utils';
-
+import { atomicWriteJson, readJsonFile } from './atomic-write';
 import { getArticleDir } from './helpers';
 
 interface ExportSession {
@@ -66,7 +66,7 @@ class ExportStore {
       const filePath = path.join(sessionDir, 'session.json');
       // Don't save articles array in session.json to keep it small
       const sessionData = { ...session };
-      await fs.promises.writeFile(filePath, JSON.stringify(sessionData, null, 2));
+      await atomicWriteJson(filePath, sessionData);
     } catch (error) {
       console.error(`Failed to save session ${session.id} to disk:`, error);
     }
@@ -133,15 +133,28 @@ class ExportStore {
     // Always read from disk to ensure consistency
     const sessionPath = path.join(this.sessionsDir, id, 'session.json');
     try {
-      const data = await fs.promises.readFile(sessionPath, 'utf8');
-      const session = JSON.parse(data, (key, value) => {
-          // Convert date strings back to Date objects
-          if (key === 'createdAt' || key === 'lastModifiedAt' || key === 'startedAt' || 
-              key === 'endedAt' || key === 'rateLimitedAt') {
-            return value ? new Date(value) : value;
+      const session = await readJsonFile<ExportSession>(sessionPath);
+      if (!session) {
+        return undefined;
+      }
+      
+      // Convert date strings back to Date objects
+      const dateFields = ['createdAt', 'lastModifiedAt', 'startedAt', 'endedAt', 'rateLimitedAt'];
+      const convertDates = (obj: any, path: string[] = []): any => {
+        if (!obj || typeof obj !== 'object') return obj;
+        
+        for (const key in obj) {
+          const currentPath = [...path, key].join('.');
+          if ((dateFields.includes(key) || currentPath.includes('Task.') && dateFields.some(f => key === f)) && obj[key]) {
+            obj[key] = new Date(obj[key]);
+          } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+            obj[key] = convertDates(obj[key], [...path, key]);
           }
-          return value;
-        });
+        }
+        return obj;
+      };
+      
+      convertDates(session);
         
         // Ensure all required fields are present with defaults
         const now = new Date();
@@ -285,27 +298,43 @@ class ExportStore {
   }
   
   async updateFetchTask(id: string, updates: Partial<ExportSession['currentFetchTask']>): Promise<void> {
-    const session = await this.getSession(id);
-    if (session) {
-      session.currentFetchTask = {
-        ...session.currentFetchTask,
-        ...updates
-      };
-      session.lastModifiedAt = new Date();
-      await this.saveSessionToDisk(session);
+    const sessionPath = path.join(this.sessionsDir, id, 'session.json');
+    
+    // Check if session exists
+    const exists = await fs.promises.access(sessionPath).then(() => true).catch(() => false);
+    if (!exists) {
+      return;
     }
+    
+    // Use atomic merge write to handle concurrent updates
+    await atomicWriteJson(
+      sessionPath,
+      {
+        currentFetchTask: updates,
+        lastModifiedAt: new Date()
+      },
+      { merge: true }
+    );
   }
   
   async updateDownloadTask(id: string, updates: Partial<ExportSession['currentDownloadTask']>): Promise<void> {
-    const session = await this.getSession(id);
-    if (session) {
-      session.currentDownloadTask = {
-        ...session.currentDownloadTask,
-        ...updates
-      };
-      session.lastModifiedAt = new Date();
-      await this.saveSessionToDisk(session);
+    const sessionPath = path.join(this.sessionsDir, id, 'session.json');
+    
+    // Check if session exists
+    const exists = await fs.promises.access(sessionPath).then(() => true).catch(() => false);
+    if (!exists) {
+      return;
     }
+    
+    // Use atomic merge write to handle concurrent updates
+    await atomicWriteJson(
+      sessionPath,
+      {
+        currentDownloadTask: updates,
+        lastModifiedAt: new Date()
+      },
+      { merge: true }
+    );
   }
 
   async deleteSession(id: string): Promise<boolean> {
