@@ -306,7 +306,7 @@ async function downloadArticleImages(sessionId: string, article: Article, savedI
     }
     
     // Check current directory size before each download
-    const currentDirSize = getDirectorySize(articlesDir);
+    const currentDirSize = await getDirectorySize(articlesDir);
     if (currentDirSize >= MAX_IMAGES_SIZE) {
       console.log(`  ⚠️  Skipping remaining images - directory size limit reached (${(currentDirSize / 1024 / 1024).toFixed(1)}MB)`);
       skippedDueToSize = imageMap.size - downloadedCount - skippedCount - errorCount;
@@ -328,14 +328,16 @@ async function downloadArticleImages(sessionId: string, article: Article, savedI
     const destPath = path.join(articlesDir, filename);
 
     // Skip if already exists with non-zero size
-    if (fs.existsSync(destPath)) {
-      const stats = fs.statSync(destPath);
+    try {
+      const stats = await fs.promises.stat(destPath);
       if (stats.size > 0) {
         skippedCount++;
         continue;
       }
       // Remove empty files and re-download
-      fs.unlinkSync(destPath);
+      await fs.promises.unlink(destPath);
+    } catch (e) {
+      // File doesn't exist, continue with download
     }
 
     // Download with fallbacks
@@ -372,7 +374,13 @@ async function downloadArticleContent(
   
   const articlesDir = getArticleDir(sessionId, article.savedId);
   const originalHtmlPath = path.join(articlesDir, 'original.html');
-  const articleExists = fs.existsSync(originalHtmlPath);
+  let articleExists = false;
+  try {
+    await fs.promises.access(originalHtmlPath);
+    articleExists = true;
+  } catch (e) {
+    // File doesn't exist
+  }
   
   // If only downloading images, we don't need to do anything for original HTML
   if (onlyImages) {
