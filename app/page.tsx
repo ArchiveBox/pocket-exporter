@@ -9,10 +9,11 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp } from "lucide-react"
+import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp, Trash2 } from "lucide-react"
 import { Article } from "@/types/article"
 import { ArticleImage } from "@/components/article-image"
 import { PaywallSection } from "@/components/PaywallSection"
+import * as AccordionPrimitive from '@radix-ui/react-accordion';
 
 interface ParsedRequest {
   cookies: Record<string, string>
@@ -324,6 +325,45 @@ export default function PocketExportApp() {
     }
   }
 
+  const deleteSession = async () => {
+    if (!sessionId) return
+
+    const confirmed = window.confirm(
+      `Are you sure you want to delete this session?\n\nThis will permanently delete:\n• ${articles.length} articles\n• All downloaded content\n• Session authentication data\n\nYour payment status will be preserved.\n\nThis action cannot be undone.`
+    )
+
+    if (!confirmed) return
+
+    try {
+      const response = await fetch(`/api/session/delete?session=${sessionId}`, {
+        method: 'DELETE'
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        // Clear local state
+        setSessionId(null)
+        setSessionData(null)
+        setArticles([])
+        setDownloadStatus(null)
+        setPaymentData(null)
+        setCurrentStep(1)
+        setFilterQuery("")
+        setDebouncedFilterQuery("")
+        
+        // Clear URL
+        router.push('/')
+        
+        alert('Session deleted successfully')
+      } else {
+        alert(`Error: ${data.error}`)
+      }
+    } catch (error) {
+      alert('Failed to delete session')
+    }
+  }
+
 
   // Cleanup interval on unmount
   useEffect(() => {
@@ -342,13 +382,38 @@ export default function PocketExportApp() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Pocket Data Exporter</h1>
-          <p className="text-lg text-gray-600">
-            Export your saved articles from Mozilla Pocket.<br/>
+          <p className="text-lg text-gray-600 mb-6">
+            Export your saved bookmarks and article content from Mozilla Pocket before they shut down in October 2025.<br/>
             Export all your bookmark URLs, titles, excerpts, tags, archived article text (for Pocket Premium users), and more...
             <br/>
-            Export up to 100 articles for free, <i>$15 one-time-fee for unlimited export (including Pocket Premium article content archives and article images).
           </p>
-
+          
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-4 max-w-2xl mx-auto">
+            <i className="text-gray-400">Did you pay for Pocket Premium for years to get their "Permanent Library" feature?</i>
+            <br/>
+            ...<br/>
+            Well now <b><a href="https://getpocket.com/farewell" className="text-blue-600 hover:text-blue-700 font-large">Pocket is shutting down in October 2025 and deleting all user data</a></b> and it turns out they never intended to let you export any of those articles you paid to capture. So I reverse engineered their API and built this tool to export your complete account: article text, tags, metadata, titles, features images & videos, and more.
+            <br/><br/>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+              <div className="text-center sm:text-left">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">🎁 Free for up to 100 articles</h3>
+                <p className="text-gray-600">Test it out easily with no credit card</p>
+              </div>
+              <div className="text-center sm:text-left">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">💎 $15 one-time fee for full export</h3>
+                <p className="text-gray-600">Up to 50,000 articles + Permanent Library</p>
+              </div>
+            </div>
+            <div className="text-sm text-gray-500 pt-4 border-t">
+              <a href="https://github.com/ArchiveBox/pocket-exporter" target="_blank" rel="noopener noreferrer" 
+                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 font-medium">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fillRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clipRule="evenodd" />
+                </svg>
+                Entirely open source on Github
+              </a>
+            </div>
+          </div>
         </div>
 
 
@@ -615,7 +680,7 @@ export default function PocketExportApp() {
                     <p className="text-sm font-medium text-blue-900 mb-1">Visit this URL anytime to view live export progress</p>
                     <div className="flex items-center gap-2">
                       <code className="text-xs bg-white px-2 py-1 rounded flex-1 overflow-x-auto">
-                        {typeof window !== 'undefined' ? window.location.origin : ''}{router ? `?session=${sessionId}` : ''}
+                        {typeof window !== 'undefined' ? window.location.origin : ''}/{router ? `?session=${sessionId}` : ''}
                       </code>
                       <Button
                         size="sm"
@@ -909,6 +974,24 @@ export default function PocketExportApp() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* Delete Session Button */}
+        {sessionId && (
+          <div className="mt-8 text-center pb-8">
+            <Button
+              variant="destructive"
+              size="lg"
+              onClick={deleteSession}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete All Session Data
+            </Button>
+            <p className="text-xs text-gray-500 mt-2">
+              This will permanently delete all {articles.length} articles and session data
+            </p>
+          </div>
         )}
       </div>
     </div>

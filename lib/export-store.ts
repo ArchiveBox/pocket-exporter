@@ -289,6 +289,38 @@ class ExportStore {
     }
   }
 
+  deleteSession(id: string): boolean {
+    const sessionDir = path.join(this.sessionsDir, id);
+    
+    if (!fs.existsSync(sessionDir)) {
+      console.log(`Session directory not found: ${sessionDir}`);
+      return false;
+    }
+    
+    try {
+      // Delete articles directory if it exists
+      const articlesDir = path.join(sessionDir, 'articles');
+      if (fs.existsSync(articlesDir)) {
+        fs.rmSync(articlesDir, { recursive: true, force: true });
+        console.log(`Deleted articles directory: ${articlesDir}`);
+      }
+      
+      // Delete session.json if it exists
+      const sessionFile = path.join(sessionDir, 'session.json');
+      if (fs.existsSync(sessionFile)) {
+        fs.unlinkSync(sessionFile);
+        console.log(`Deleted session file: ${sessionFile}`);
+      }
+      
+      // Preserve payments.json by not deleting it
+      console.log(`Preserved payment data for session ${id}`);
+      
+      return true;
+    } catch (error) {
+      console.error(`Failed to delete session ${id}:`, error);
+      return false;
+    }
+  }
 
 }
 
