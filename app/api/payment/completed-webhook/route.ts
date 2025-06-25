@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
           checkoutSession.payment_intent as string
         );
         
-        const existingData = updatePaymentData(appSessionId, {
+        const existingData = await updatePaymentData(appSessionId, {
           hasUnlimitedAccess: true,
           payment: {
             status: 'completed',

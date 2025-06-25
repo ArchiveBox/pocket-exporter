@@ -75,8 +75,8 @@ export async function GET(request: NextRequest) {
     }
     
     const downloadStatus = getDownloadStatus(sessionId, allArticles);
-    const sessionSizeMB = getSessionSizeInMB(sessionId);
-    let paymentData = readPaymentData(sessionId);
+    const sessionSizeMB = await getSessionSizeInMB(sessionId);
+    let paymentData = await readPaymentData(sessionId);
     
     // Only check and sync payment status with Stripe if payment is not already completed
     if (paymentData?.payment?.stripeSessionId && paymentData.payment.status !== 'completed') {
@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
                 }
               }
               
-              paymentData = updatePaymentData(sessionId, {
+              paymentData = await updatePaymentData(sessionId, {
                 hasUnlimitedAccess: true,
                 payment: {
                   ...paymentData.payment,
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
             stripeSession.payment_intent as string
           );
           
-          paymentData = updatePaymentData(sessionId, {
+          paymentData = await updatePaymentData(sessionId, {
             hasUnlimitedAccess: true,
             payment: {
               ...paymentData.payment,

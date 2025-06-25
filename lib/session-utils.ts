@@ -4,9 +4,7 @@ import path from 'path';
 const SESSIONS_DIR = path.join(process.cwd(), 'sessions');
 
 // Ensure sessions directory exists
-if (!fs.existsSync(SESSIONS_DIR)) {
-  fs.mkdirSync(SESSIONS_DIR, { recursive: true });
-}
+fs.promises.mkdir(SESSIONS_DIR, { recursive: true }).catch(() => {});
 
 export interface PaymentData {
   status: 'pending' | 'completed' | 'failed';
@@ -29,36 +27,33 @@ export interface SessionPaymentData {
   payment?: PaymentData;
 }
 
-export function getPaymentsPath(sessionId: string): string {
+export async function getPaymentsPath(sessionId: string): Promise<string> {
   const sessionDir = path.join(SESSIONS_DIR, sessionId);
-  if (!fs.existsSync(sessionDir)) {
-    fs.mkdirSync(sessionDir, { recursive: true });
-  }
+  await fs.promises.mkdir(sessionDir, { recursive: true }).catch(() => {});
   return path.join(sessionDir, 'payments.json');
 }
 
-export function readPaymentData(sessionId: string): SessionPaymentData | null {
+export async function readPaymentData(sessionId: string): Promise<SessionPaymentData | null> {
   try {
-    const paymentsPath = getPaymentsPath(sessionId);
-    if (!fs.existsSync(paymentsPath)) {
-      return null;
-    }
-    const data = fs.readFileSync(paymentsPath, 'utf8');
+    const paymentsPath = await getPaymentsPath(sessionId);
+    const data = await fs.promises.readFile(paymentsPath, 'utf8');
     return JSON.parse(data);
-  } catch (error) {
-    console.error('Error reading payment data:', error);
+  } catch (error: any) {
+    if (error.code !== 'ENOENT') {
+      console.error('Error reading payment data:', error);
+    }
     return null;
   }
 }
 
-export function writePaymentData(sessionId: string, data: SessionPaymentData): SessionPaymentData {
+export async function writePaymentData(sessionId: string, data: SessionPaymentData): Promise<SessionPaymentData> {
   try {
-    const paymentsPath = getPaymentsPath(sessionId);
+    const paymentsPath = await getPaymentsPath(sessionId);
     console.log(`Writing payment data to ${paymentsPath}:`, JSON.stringify(data, null, 2));
-    fs.writeFileSync(paymentsPath, JSON.stringify(data, null, 2));
+    await fs.promises.writeFile(paymentsPath, JSON.stringify(data, null, 2));
     
     // Verify the write
-    const verifyData = fs.readFileSync(paymentsPath, 'utf8');
+    const verifyData = await fs.promises.readFile(paymentsPath, 'utf8');
     console.log(`Verified written data:`, verifyData);
     
     return data;
@@ -68,8 +63,8 @@ export function writePaymentData(sessionId: string, data: SessionPaymentData): S
   }
 }
 
-export function updatePaymentData(sessionId: string, updates: Partial<SessionPaymentData>): SessionPaymentData {
-  const existingData = readPaymentData(sessionId) || {
+export async function updatePaymentData(sessionId: string, updates: Partial<SessionPaymentData>): Promise<SessionPaymentData> {
+  const existingData = await readPaymentData(sessionId) || {
     articlesFetchedBeforePayment: 0,
     hasUnlimitedAccess: false
   };
@@ -84,11 +79,11 @@ export function updatePaymentData(sessionId: string, updates: Partial<SessionPay
     } : existingData.payment
   };
   
-  return writePaymentData(sessionId, updatedData);
+  return await writePaymentData(sessionId, updatedData);
 }
 
-export function hasValidPayment(sessionId: string): boolean {
-  const paymentData = readPaymentData(sessionId);
+export async function hasValidPayment(sessionId: string): Promise<boolean> {
+  const paymentData = await readPaymentData(sessionId);
   return paymentData?.hasUnlimitedAccess === true && 
          paymentData?.payment?.status === 'completed';
 }
@@ -143,8 +138,8 @@ export async function fetchCompletePaymentDetails(
   return paymentDetails;
 }
 
-export function canFetchMoreArticles(sessionId: string, currentArticleCount: number): boolean {
-  const paymentData = readPaymentData(sessionId);
+export async function canFetchMoreArticles(sessionId: string, currentArticleCount: number): Promise<boolean> {
+  const paymentData = await readPaymentData(sessionId);
   
   // If they have unlimited access, they can fetch more
   if (paymentData?.hasUnlimitedAccess === true) {
@@ -155,8 +150,8 @@ export function canFetchMoreArticles(sessionId: string, currentArticleCount: num
   return currentArticleCount < 100;
 }
 
-export function recordArticlesFetched(sessionId: string, count: number): void {
-  const paymentData = readPaymentData(sessionId) || {
+export async function recordArticlesFetched(sessionId: string, count: number): Promise<void> {
+  const paymentData = await readPaymentData(sessionId) || {
     articlesFetchedBeforePayment: 0,
     hasUnlimitedAccess: false
   };
@@ -164,33 +159,39 @@ export function recordArticlesFetched(sessionId: string, count: number): void {
   // Only update if they don't have unlimited access
   if (!paymentData.hasUnlimitedAccess) {
     paymentData.articlesFetchedBeforePayment = count;
-    writePaymentData(sessionId, paymentData);
+    await writePaymentData(sessionId, paymentData);
   }
 }
 
-export function getSessionSizeInMB(sessionId: string): number {
+export async function getSessionSizeInMB(sessionId: string): Promise<number> {
   try {
     const sessionDir = path.join(SESSIONS_DIR, sessionId);
-    if (!fs.existsSync(sessionDir)) {
-      return 0;
-    }
     
     let totalSize = 0;
     
-    function calculateDirSize(dir: string): void {
-      const files = fs.readdirSync(dir);
-      for (const file of files) {
-        const filePath = path.join(dir, file);
-        const stats = fs.statSync(filePath);
-        if (stats.isDirectory()) {
-          calculateDirSize(filePath);
-        } else {
-          totalSize += stats.size;
-        }
+    async function calculateDirSize(dir: string): Promise<void> {
+      try {
+        const files = await fs.promises.readdir(dir);
+        
+        await Promise.all(files.map(async (file) => {
+          const filePath = path.join(dir, file);
+          try {
+            const stats = await fs.promises.stat(filePath);
+            if (stats.isDirectory()) {
+              await calculateDirSize(filePath);
+            } else {
+              totalSize += stats.size;
+            }
+          } catch {
+            // Ignore errors for individual files
+          }
+        }));
+      } catch {
+        // Directory doesn't exist or not accessible
       }
     }
     
-    calculateDirSize(sessionDir);
+    await calculateDirSize(sessionDir);
     return totalSize / (1024 * 1024); // Convert to MB
   } catch (error) {
     console.error('Error calculating session size:', error);

@@ -128,7 +128,7 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
     }
     
     // Check if we've hit the paywall limit
-    if (!canFetchMoreArticles(sessionId, totalFetched)) {
+    if (!(await canFetchMoreArticles(sessionId, totalFetched))) {
       console.log('\n⚠️  Reached free tier limit of 100 articles. Payment required to continue.');
       await exportStore.updateFetchTask(sessionId, {
         status: 'stopped',

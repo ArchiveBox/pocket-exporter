@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if there's already a payment session
-    const existingPaymentData = readPaymentData(sessionId);
+    const existingPaymentData = await readPaymentData(sessionId);
     
     // If there's a pending or completed payment, verify its status with Stripe
     if (existingPaymentData?.payment?.stripeSessionId) {
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         
         // If payment is complete, update local data and prevent new session
         if (stripeSession.status === 'complete') {
-          updatePaymentData(sessionId, {
+          await updatePaymentData(sessionId, {
             hasUnlimitedAccess: true,
             payment: {
               ...existingPaymentData.payment,
@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Update payment record with Stripe session ID and payment intent if available
-    updatePaymentData(sessionId, {
+    await updatePaymentData(sessionId, {
       payment: {
         status: 'pending',
         stripeSessionId: checkoutSession.id,
