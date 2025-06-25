@@ -398,9 +398,27 @@ export async function makeGraphQLRequest(
       
       res.on('end', () => {
         try {
+          // Check if response is HTML instead of JSON
+          if (data.trim().startsWith('<!DOCTYPE') || data.trim().startsWith('<html')) {
+            console.error('Received HTML response instead of JSON from Pocket API');
+            console.error('Response preview:', data.substring(0, 200));
+            
+            // Try to determine the type of error from the HTML
+            if (data.includes('login') || data.includes('sign in') || data.includes('authenticate')) {
+              reject(new Error('Authentication required - session expired'));
+            } else if (data.includes('rate limit') || data.includes('too many requests')) {
+              reject(new Error('Rate limited by Pocket API'));
+            } else {
+              reject(new Error('Pocket API returned HTML instead of JSON - authentication may have expired'));
+            }
+            return;
+          }
+          
           resolve(JSON.parse(data));
-        } catch (e) {
-          reject(e);
+        } catch (e: any) {
+          console.error('Failed to parse Pocket API response:', e.message);
+          console.error('Response preview:', data.substring(0, 200));
+          reject(new Error(`Invalid JSON response from Pocket API: ${e.message}`));
         }
       });
     });
