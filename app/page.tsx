@@ -773,7 +773,7 @@ export default function PocketExportApp() {
                       <span>Purchased. Unlimited export enabled.</span>
                     )}
                     &nbsp;
-                    <small className="text-xs text-gray-500">Contact <code>@ArchiveBoxApp</code> on X.com for support.</small>
+                    <small className="text-xs text-gray-500">Open a <a href="https://github.com/ArchiveBox/pocket-exporter/issues" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">Github issue</a> if you need support.</small>
                   </div>
                 )}
                 
@@ -1189,7 +1189,7 @@ export default function PocketExportApp() {
             Open source on Github
           </a>
           <small className="text-gray-500" style={{float: 'right'}}>
-            Contact <code>X.com/ArchiveBoxApp</code> for questions.
+            Contact <a href="https://x.com/ArchiveBoxApp">X.com/ArchiveBoxApp</a> for questions or open a <a href="https://github.com/ArchiveBox/pocket-exporter/issues" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">Github issue</a>.
           </small>
         </div>
       </div>
