@@ -694,9 +694,15 @@ async function processExistingArticlesForImages(
   auth: { cookieString: string; headers: Record<string, string> }
 ): Promise<void> {
   // Filter articles that have original HTML
-  const articlesWithHtml = articles.filter(article => 
-    isArticleDownloaded(sessionId, article.savedId)
+  const articleChecks = await Promise.all(
+    articles.map(async (article) => ({
+      article,
+      hasHtml: await isArticleDownloaded(sessionId, article.savedId)
+    }))
   );
+  const articlesWithHtml = articleChecks
+    .filter(check => check.hasHtml)
+    .map(check => check.article);
   
   if (articlesWithHtml.length === 0) {
     return;
@@ -749,7 +755,7 @@ export async function downloadSingleArticle(
 ): Promise<{ success: boolean; error?: string; alreadyDownloaded?: boolean }> {
   try {
     // Check if article is already downloaded
-    if (isArticleDownloaded(sessionId, article.savedId)) {
+    if (await isArticleDownloaded(sessionId, article.savedId)) {
       console.log(`Article ${article.savedId} already downloaded`);
       // Still check for missing images
       await downloadArticleContent(sessionId, article, auth, true); // onlyImages = true
@@ -765,13 +771,13 @@ export async function downloadSingleArticle(
   }
 }
 
-export function getDownloadStatus(sessionId: string, articles?: any[]): {
+export async function getDownloadStatus(sessionId: string, articles?: any[]): Promise<{
   total: number;
   completed: number;
   downloading: number;
   errors: number;
   articleStatus: Record<string, 'pending' | 'downloading' | 'completed' | 'error'>;
-} {
+}> {
   const articleStatus: Record<string, 'pending' | 'downloading' | 'completed' | 'error'> = {};
   
   // Early return if no articles
@@ -809,14 +815,14 @@ export function getDownloadStatus(sessionId: string, articles?: any[]): {
   const completedArticles = new Set<string>();
   try {
     // Read all directories at once to minimize filesystem calls
-    const articleDirs = fs.readdirSync(articlesDir, { withFileTypes: true });
+    const articleDirs = await fs.promises.readdir(articlesDir, { withFileTypes: true });
     
-    // Check each directory for original.html
-    for (const dir of articleDirs) {
+    // Check each directory for original.html in parallel
+    await Promise.all(articleDirs.map(async (dir) => {
       if (dir.isDirectory()) {
         try {
           const originalHtmlPath = path.join(articlesDir, dir.name, 'original.html');
-          const stats = fs.statSync(originalHtmlPath);
+          const stats = await fs.promises.stat(originalHtmlPath);
           if (stats.size > 0) {
             completedArticles.add(dir.name);
           }
@@ -824,7 +830,7 @@ export function getDownloadStatus(sessionId: string, articles?: any[]): {
           // File doesn't exist, skip
         }
       }
-    }
+    }));
   } catch (e) {
     // Directory doesn't exist or error reading it
     console.error('Error reading articles directory:', e);

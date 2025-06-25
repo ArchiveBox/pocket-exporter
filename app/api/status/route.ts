@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    const downloadStatus = getDownloadStatus(sessionId, allArticles);
+    const downloadStatus = await getDownloadStatus(sessionId, allArticles);
     const sessionSizeMB = await getSessionSizeInMB(sessionId);
     let paymentData = await readPaymentData(sessionId);
     

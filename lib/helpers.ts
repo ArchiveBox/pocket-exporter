@@ -331,9 +331,14 @@ export function getArticleHtmlPath(sessionId: string, articleId: string): string
 }
 
 // Check if article is already downloaded
-export function isArticleDownloaded(sessionId: string, articleId: string): boolean {
+export async function isArticleDownloaded(sessionId: string, articleId: string): Promise<boolean> {
   const articleHtmlPath = getArticleHtmlPath(sessionId, articleId);
-  return fs.existsSync(articleHtmlPath);
+  try {
+    await fs.promises.access(articleHtmlPath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Common error response handler for API routes
