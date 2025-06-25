@@ -34,7 +34,7 @@ export default function PocketExportApp() {
     cookies: sessionData.auth.cookieString || {},
   } : null
   const authData = sessionData?.auth || null
-  const fetchTask = sessionData?.currentFetchTask || { status: 'idle', count: 0, total: 0 }
+  const fetchTask = sessionData?.currentFetchTask || { status: 'idle', count: 0, total: 0, error: undefined }
   const downloadTask = sessionData?.currentDownloadTask || { status: 'idle', count: 0, total: 0 }
   const isExporting = fetchTask.status === 'running'
   const isDownloading = downloadTask.status === 'running'
@@ -260,6 +260,11 @@ export default function PocketExportApp() {
 
         // Update the entire session data
         setSessionData(statusData)
+        
+        // Debug: Log fetch task status when it has an error
+        if (statusData.currentFetchTask?.status === 'error') {
+          console.log('Fetch task error detected:', statusData.currentFetchTask);
+        }
         
         // Update download status - always update to reflect actual filesystem state
         if (statusData.downloadStatus) {
@@ -619,7 +624,7 @@ export default function PocketExportApp() {
                   </div>
                   
                   {/* Show error message if fetch task has error */}
-                  {fetchTask.status === 'error' && fetchTask.error && (
+                  {fetchTask.error && (
                     <div className="p-3 bg-red-50 border border-red-200 rounded-md">
                       <div className="flex items-start gap-2">
                         <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -639,7 +644,7 @@ export default function PocketExportApp() {
                   {/* Article fetch progress bar */}
                   <Progress 
                     value={fetchTask.total > 0 ? (fetchTask.count / fetchTask.total) * 100 : 0} 
-                    className={`w-full h-2 ${isRateLimited ? '[&>div]:bg-orange-500' : ''} ${fetchTask.status === 'error' ? '[&>div]:bg-red-500' : ''}`}
+                    className={`w-full h-2 ${isRateLimited ? '[&>div]:bg-orange-500' : ''} ${fetchTask.error ? '[&>div]:bg-red-500' : ''}`}
                   />
                   
                   <div className="flex items-center justify-between text-sm">
@@ -665,12 +670,12 @@ export default function PocketExportApp() {
                     <Button 
                       onClick={isExporting || isRateLimited ? stopFetchArticles : startFetchArticles}
                       size="sm"
-                      variant={isExporting || isRateLimited ? "destructive" : fetchTask.status === 'error' && fetchTask.error === 'Authentication expired' ? "outline" : "default"}
-                      disabled={(!sessionId && !isExporting && !isRateLimited) || (fetchTask.status === 'error' && fetchTask.error === 'Authentication expired')}
-                      className={!isExporting && !isRateLimited && sessionId && fetchTask.status !== 'error' ? "bg-green-600 hover:bg-green-700 text-white animate-pulse shadow-lg shadow-green-600/25" : ""}
+                      variant={isExporting || isRateLimited ? "destructive" : fetchTask.error === 'Authentication expired' ? "outline" : "default"}
+                      disabled={(!sessionId && !isExporting && !isRateLimited) || (fetchTask.error === 'Authentication expired')}
+                      className={!isExporting && !isRateLimited && sessionId && !fetchTask.error ? "bg-green-600 hover:bg-green-700 text-white animate-pulse shadow-lg shadow-green-600/25" : ""}
                     >
                       {isExporting || isRateLimited ? "Stop Fetching" : 
-                       fetchTask.status === 'error' && fetchTask.error === 'Authentication expired' ? "Fresh Pocket Auth Required" :
+                       fetchTask.error === 'Authentication expired' ? "Fresh Pocket Auth Required" :
                        sessionId ? "Fetch Articles" : "Auth Required"}
                     </Button>
                   </div>
