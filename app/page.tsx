@@ -442,7 +442,7 @@ export default function PocketExportApp() {
               {sessionId && (
                 <div className="mb-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
                   <p className="text-sm text-yellow-800 mb-2">
-                    To the authentication link to Pocket, paste a fresh GraphQL Pocket request copied in <code>Fetch (node.js format)</code> from your browser's developer tools:
+                    To re-authenticate with Pocket, paste a fresh GraphQL Pocket request copied in <code>Fetch (node.js format)</code> from your browser's developer tools:
                   </p>
                   <div className="space-y-2">
                     <Textarea
