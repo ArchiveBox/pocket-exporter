@@ -206,9 +206,28 @@ function shouldStopDownload(sessionId: string): boolean {
   return session?.currentDownloadTask?.status === 'stopped';
 }
 
+// Helper function to get directory size
+function getDirectorySize(dirPath: string): number {
+  let totalSize = 0;
+  try {
+    const files = fs.readdirSync(dirPath);
+    for (const file of files) {
+      const filePath = path.join(dirPath, file);
+      const stats = fs.statSync(filePath);
+      if (stats.isFile()) {
+        totalSize += stats.size;
+      }
+    }
+  } catch (e) {
+    // Directory doesn't exist or error reading it
+  }
+  return totalSize;
+}
+
 // Helper function to download images for an article
 async function downloadArticleImages(sessionId: string, article: Article, savedItem: any): Promise<void> {
   const articlesDir = getArticleDir(sessionId, article.savedId);
+  const MAX_IMAGES_SIZE = 50 * 1024 * 1024; // 50MB limit per article
   
   if (!savedItem?.item) {
     return;
@@ -274,12 +293,21 @@ async function downloadArticleImages(sessionId: string, article: Article, savedI
   let downloadedCount = 0;
   let skippedCount = 0;
   let errorCount = 0;
+  let skippedDueToSize = 0;
 
   // Download all images
   for (const [key, imgData] of imageMap.entries()) {
     // Check if downloads were stopped
     if (shouldStopDownload(sessionId)) {
       console.log('Image downloads stopped by user');
+      break;
+    }
+    
+    // Check current directory size before each download
+    const currentDirSize = getDirectorySize(articlesDir);
+    if (currentDirSize >= MAX_IMAGES_SIZE) {
+      console.log(`  ⚠️  Skipping remaining images - directory size limit reached (${(currentDirSize / 1024 / 1024).toFixed(1)}MB)`);
+      skippedDueToSize = imageMap.size - downloadedCount - skippedCount - errorCount;
       break;
     }
     
@@ -317,8 +345,12 @@ async function downloadArticleImages(sessionId: string, article: Article, savedI
     }
   }
 
-  if (downloadedCount > 0 || errorCount > 0) {
-    console.log(`  ✓ Images: ${downloadedCount} downloaded, ${skippedCount} skipped, ${errorCount} errors`);
+  if (downloadedCount > 0 || errorCount > 0 || skippedDueToSize > 0) {
+    const parts = [`  ✓ Images: ${downloadedCount} downloaded`];
+    if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
+    if (errorCount > 0) parts.push(`${errorCount} errors`);
+    if (skippedDueToSize > 0) parts.push(`${skippedDueToSize} skipped (size limit)`);
+    console.log(parts.join(', '));
   }
 }
 
