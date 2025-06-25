@@ -7,6 +7,8 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
+    env_file:
+      - path: ./.env
     volumes:
       - ./public:/app/public:ro
       - ./.env:/app/.env:ro
