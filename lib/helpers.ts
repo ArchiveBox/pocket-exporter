@@ -327,7 +327,7 @@ export function getArticleDir(sessionId: string, articleId: string): string {
 
 // Common article HTML path helper
 export function getArticleHtmlPath(sessionId: string, articleId: string): string {
-  return path.join(getArticleDir(sessionId, articleId), 'article.html');
+  return path.join(getArticleDir(sessionId, articleId), 'original.html');
 }
 
 // Check if article is already downloaded

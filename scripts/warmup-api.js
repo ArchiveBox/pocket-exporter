@@ -110,16 +110,18 @@ async function main() {
 
   // List of endpoints to warm up
   const endpoints = [
-    { path: '/', method: 'GET' },
+    { path: '/?session=warmup', method: 'GET' },
     { path: '/api/task/save-pocket-auth', method: 'POST' },
-    { path: '/api/task/fetch-articles-list/start?sessionId=warmup', method: 'POST' },
-    { path: '/api/task/fetch-articles-list/stop?sessionId=warmup', method: 'POST' },
-    { path: '/api/task/download-articles/start?sessionId=warmup', method: 'POST' },
-    { path: '/api/task/download-articles/stop?sessionId=warmup', method: 'POST' },
-    { path: '/api/export/status?sessionId=warmup', method: 'GET' },
-    { path: '/api/export/download-single?sessionId=warmup&articleId=warmup', method: 'POST' },
-    { path: '/api/export/download?sessionId=warmup&format=json', method: 'GET' },
-    { path: '/api/export/article-html?sessionId=warmup&articleId=warmup', method: 'GET' },
+    { path: '/api/task/fetch-articles-list/start?session=warmup', method: 'POST' },
+    { path: '/api/task/fetch-articles-list/stop?session=warmup', method: 'POST' },
+    { path: '/api/task/download-articles/start?session=warmup', method: 'POST' },
+    { path: '/api/task/download-articles/stop?session=warmup', method: 'POST' },
+    { path: '/api/task/download-single/start?session=warmup&articleId=warmup', method: 'POST' },
+    { path: '/api/status?session=warmup', method: 'GET' },
+    { path: '/api/session/json?session=warmup', method: 'GET' },
+    { path: '/api/session/zip?session=warmup', method: 'GET' },
+    { path: '/api/article/html?session=warmup&savedId=warmup', method: 'GET' },
+    { path: '/api/article/image/test.jpg?session=warmup&savedId=warmup', method: 'GET' },
   ];
 
   // Warm up all endpoints

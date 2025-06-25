@@ -4,6 +4,7 @@ import { Article } from '@/types/article';
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
+import { execSync } from 'child_process';
 import { exportStore } from '@/lib/export-store';
 
 interface DownloadQueue {
@@ -21,81 +22,20 @@ interface DownloadQueue {
 const downloadQueues: Map<string, DownloadQueue> = new Map();
 
 import { 
-  getHeaders, 
-  getGraphQLEndpoint, 
-  extractReaderSlug, 
   handleRateLimit, 
   respectRateLimit, 
-  isRateLimitResponse, 
-  isAuthError, 
-  getCurrentBackoff, 
   increaseBackoff, 
   resetBackoff, 
-  buildGraphQLQuery, 
   getArticleDir, 
   getArticleHtmlPath, 
-  isArticleDownloaded, 
-  makeGraphQLRequest 
+  isArticleDownloaded
 } from './helpers';
 
 // Track global rate limit state (shared with download_article_content.js)
 let isRateLimited = false;
 let rateLimitEndTime = 0;
 
-const query = buildGraphQLQuery(`
-  query GetSavedItemBySlug($id: ID!) {
-    readerSlug(slug: $id) {
-      fallbackPage {
-        ... on ReaderInterstitial {
-          itemCard {
-            ... on PocketMetadata {
-              item {
-                ...ItemDetails
-              }
-            }
-          }
-        }
-      }
-      savedItem {
-        ...SavedItemDetails
-        annotations {
-          highlights {
-            id
-            quote
-            patch
-            version
-            _createdAt
-            _updatedAt
-            note {
-              text
-              _createdAt
-              _updatedAt
-            }
-          }
-        }
-        item {
-          ...ItemDetails
-          ... on Item {
-            article
-            relatedAfterArticle(count: 3) {
-              corpusRecommendationId: id
-              corpusItem {
-                thumbnail: imageUrl
-                publisher
-                title
-                externalUrl: url
-                saveUrl: url
-                id
-                excerpt
-              }
-            }
-          }
-        }
-      }
-      slug
-    }
-  }
-`, ['SavedItemDetails', 'ItemDetails']);
+// No longer using GraphQL to fetch article content - we download original HTML with curl instead
 
 function getProtocol(url: string) {
   return url.startsWith('https://') ? https : http;
@@ -382,62 +322,9 @@ async function downloadArticleImages(sessionId: string, article: Article, savedI
   }
 }
 
-// Fetch article data from GraphQL (used for both HTML and images)
-async function fetchArticleData(
-  sessionId: string,
-  article: Article,
-  auth: { cookieString: string; headers: Record<string, string> },
-  retryAttempt = 0
-): Promise<any> {
-  // Use the extractReaderSlug helper to get the correct slug format
-  const readerSlug = extractReaderSlug(article);
-  
-  if (!readerSlug) {
-    console.log(`Skipping article ${article.savedId} - no readerSlug available`);
-    throw new Error('No readerSlug available');
-  }
-  
-  // Respect rate limits
-  await respectRateLimit();
-  
-  const response = await makeArticleGraphQLRequest(readerSlug, auth);
+// No longer needed - we're downloading original HTML with curl instead of using GraphQL
 
-  // Check for rate limit response
-  if (isRateLimitResponse(response)) {
-    if (retryAttempt < 100) {
-      await handleRateLimit({ code: '161' });
-      return fetchArticleData(sessionId, article, auth, retryAttempt + 1);
-    } else {
-      throw new Error('Rate limit max retries');
-    }
-  }
-
-  // Check if we got an empty response
-  if (!response.data || !response.data.readerSlug) {
-    console.warn(`Empty response for ${article.savedId} - likely rate limited`);
-    if (retryAttempt < 100) {
-      await handleRateLimit({ code: '161' });
-      return fetchArticleData(sessionId, article, auth, retryAttempt + 1);
-    } else {
-      throw new Error('Rate limit max retries');
-    }
-  }
-  
-  return response.data?.readerSlug;
-}
-
-async function makeArticleGraphQLRequest(readerSlug: string, auth: { cookieString: string; headers: Record<string, string> }) {
-  const variables = { id: readerSlug };
-  const additionalHeaders = {
-    'referer': `https://getpocket.com/read/${readerSlug}`,
-    ...auth.headers,
-    'cookie': auth.cookieString
-  };
-  
-  return makeGraphQLRequest(query, variables, "GetReaderItem", additionalHeaders);
-}
-
-// Download article content (HTML and images)
+// Download article content (original HTML from source URL)
 async function downloadArticleContent(
   sessionId: string,
   article: Article,
@@ -450,127 +337,134 @@ async function downloadArticleContent(
   }
   
   const articlesDir = getArticleDir(sessionId, article.savedId);
-  const articleHtmlPath = getArticleHtmlPath(sessionId, article.savedId);
-  const articleExists = isArticleDownloaded(sessionId, article.savedId);
+  const originalHtmlPath = path.join(articlesDir, 'original.html');
+  const articleExists = fs.existsSync(originalHtmlPath);
   
-  // If only downloading images, check if article exists first
-  if (onlyImages && !articleExists) {
+  // If only downloading images, we don't need to do anything for original HTML
+  if (onlyImages) {
     return;
   }
   
-  // If article already exists and we're not only checking images, skip
-  if (!onlyImages && articleExists) {
-    console.log(`Article ${article.savedId} already downloaded, checking for missing images...`);
-    // Still check for missing images
-    return downloadArticleContent(sessionId, article, auth, true);
+  // If article already exists, skip
+  if (articleExists) {
+    console.log(`Original HTML for ${article.savedId} already downloaded`);
+    return;
   }
 
   try {
-    const logPrefix = onlyImages 
-      ? `Checking for missing images in ./sessions/${sessionId}/articles/${article.savedId}...`
-      : `Downloading content for ./sessions/${sessionId}/articles/${article.savedId}...`;
+    console.log(`Downloading original HTML for ./sessions/${sessionId}/articles/${article.savedId}...`);
     
-    console.log(logPrefix);
-    
-    // Fetch article data from GraphQL
-    const readerSlugData = await fetchArticleData(sessionId, article, auth);
-    
-    // Check if savedItem exists
-    if (!readerSlugData?.savedItem) {
-      console.warn(`Article not in saved items: ${article.savedId}`);
-      
-      // Check if it's in fallbackPage and if it's not parseable
-      const fallbackItem = readerSlugData?.fallbackPage?.itemCard?.item;
-      if (fallbackItem && fallbackItem.isArticle === false) {
-        console.warn(`Article not parseable by Pocket (isArticle=false): ${fallbackItem.givenUrl || fallbackItem.resolvedUrl}`);
+    // Get the article URL
+    const articleUrl = article.url || article.item?.givenUrl || article.item?.resolvedUrl;
+    if (!articleUrl) {
+      console.log(`Skipping ${article.savedId} - no URL available`);
+      // Mark as completed since there's nothing to download
+      const queue = downloadQueues.get(sessionId);
+      if (queue) {
+        const queueItem = queue.articles.find(item => item.article.savedId === article.savedId);
+        if (queueItem) {
+          queueItem.status = 'completed';
+        }
       }
-      
-      throw new Error('Article not saved or not parseable');
+      return;
     }
     
-    // Download HTML if not only checking images
-    if (!onlyImages) {
-      const articleContent = readerSlugData?.savedItem?.item?.article;
-      if (articleContent && articleContent !== null) {
-        // Ensure directory exists
-        if (!fs.existsSync(articlesDir)) {
-          fs.mkdirSync(articlesDir, { recursive: true });
-        }
-        
-        // Check again if downloads were stopped before writing
-        if (shouldStopDownload(sessionId)) {
-          throw new Error('Stopped by user');
-        }
-        
-        // Save the article HTML
-        fs.writeFileSync(articleHtmlPath, articleContent);
-        console.log(`✓ Downloaded article.html for: ${article.savedId}`);
-        
-        // Update the article's index.json with the full data from the detail response
-        const articleIndexPath = path.join(articlesDir, 'index.json');
-        const fullArticleData = { ...readerSlugData.savedItem };
-        
-        // Remove the article HTML content since we save it separately
-        if (fullArticleData.item?.article) {
-          delete fullArticleData.item.article;
-        }
-        
-        // Remove related articles to save space
-        if (fullArticleData.item?.relatedAfterArticle) {
-          delete fullArticleData.item.relatedAfterArticle;
-        }
-        
-        fs.writeFileSync(articleIndexPath, JSON.stringify(fullArticleData, null, 2));
-        console.log(`✓ Updated article metadata for: ${article.savedId}`);
-        
-        // Update the queue status immediately to completed
-        const queue = downloadQueues.get(sessionId);
-        if (queue) {
-          const queueItem = queue.articles.find(item => item.article.savedId === article.savedId);
-          if (queueItem) {
-            queueItem.status = 'completed';
-          }
-        }
-      } else {
-        // Check if this is because Pocket couldn't parse the article
-        const item = readerSlugData?.savedItem?.item;
-        if (item && item.isArticle === false) {
-          const url = item.givenUrl || item.resolvedUrl;
-          console.warn(`Article not parseable by Pocket (isArticle=false): ${url}`);
-          throw new Error('Article not parseable by Pocket');
-        }
-        
-        console.warn(`No article content found for ./sessions/${sessionId}/articles/${article.savedId}`);
-        throw new Error('No article content found');
-      }
+    // Ensure directory exists
+    if (!fs.existsSync(articlesDir)) {
+      fs.mkdirSync(articlesDir, { recursive: true });
     }
     
-    // Check if downloads were stopped before downloading images
+    // Check again if downloads were stopped before downloading
     if (shouldStopDownload(sessionId)) {
       throw new Error('Stopped by user');
     }
     
-    // Download images
-    await downloadArticleImages(sessionId, article, readerSlugData?.savedItem);
-  } catch (error: any) {
-    // Check if it's a rate limit error or HTML response (rate limit page)
-    const isRateLimitError = error.message?.includes('Unexpected token') || 
-                            error.message?.includes('too many requests') ||
-                            error.code === '161' ||
-                            error.message === 'Rate limit max retries';
-    
-    if (isRateLimitError) {
-      throw error; // Let the caller handle rate limit retries
+    // Use curl to download the original HTML
+    try {
+      // Use curl with a timeout and user agent to fetch the page
+      // Remove -s (silent) flag to see errors
+      const curlCommand = `curl -L --max-time 30 -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36" "${articleUrl}"`;
+      const originalHtml = execSync(curlCommand, { 
+        encoding: 'utf8',
+        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+        stdio: ['ignore', 'pipe', 'pipe'] // Capture stderr
+      });
+      
+      // Check if we got any content
+      if (!originalHtml || originalHtml.trim().length === 0) {
+        throw new Error('Empty response from server');
+      }
+      
+      // Save the original HTML
+      fs.writeFileSync(originalHtmlPath, originalHtml);
+      console.log(`✓ Downloaded original HTML for: ${article.savedId} (${originalHtml.length} bytes)`);
+      // Successfully downloaded, now get images
+      // Check if we have article metadata locally
+      const articleIndexPath = path.join(articlesDir, 'index.json');
+      let articleData = null;
+      
+      if (fs.existsSync(articleIndexPath)) {
+        try {
+          articleData = JSON.parse(fs.readFileSync(articleIndexPath, 'utf8'));
+        } catch (e) {
+          console.log(`Failed to parse article metadata for ${article.savedId}`);
+        }
+      }
+      
+      // If we have article data with image info, download the images
+      if (articleData) {
+        await downloadArticleImages(sessionId, article, articleData);
+      }
+      
+      // Update the queue status to completed
+      const queue = downloadQueues.get(sessionId);
+      if (queue) {
+        const queueItem = queue.articles.find(item => item.article.savedId === article.savedId);
+        if (queueItem) {
+          queueItem.status = 'completed';
+        }
+      }
+    } catch (curlError: any) {
+      // Log more details about the error
+      const errorMsg = curlError.stderr || curlError.message || 'Unknown error';
+      console.error(`❌ Failed to download ${article.savedId} from ${articleUrl}: ${errorMsg}`);
+      
+      // Mark as error in the queue
+      const queue = downloadQueues.get(sessionId);
+      if (queue) {
+        const queueItem = queue.articles.find(item => item.article.savedId === article.savedId);
+        if (queueItem) {
+          queueItem.status = 'error';
+          queueItem.error = errorMsg;
+        }
+      }
+      
+      // Don't return here - we still need to update the queue status
+      // The error is already logged and marked in the queue
     }
-    
+  } catch (error: any) {
     console.error(`Error processing ${article.savedId}:`, error.message);
+    // Mark as error in the queue
+    const queue = downloadQueues.get(sessionId);
+    if (queue) {
+      const queueItem = queue.articles.find(item => item.article.savedId === article.savedId);
+      if (queueItem) {
+        queueItem.status = 'error';
+        queueItem.error = error.message;
+      }
+    }
     throw error;
   }
 }
 
 async function processDownloadQueue(sessionId: string, auth: { cookieString: string; headers: Record<string, string> }, updateSession: boolean = true): Promise<void> {
   const queue = downloadQueues.get(sessionId);
-  if (!queue) return;
+  if (!queue) {
+    console.log('No download queue found for session:', sessionId);
+    return;
+  }
+
+  console.log(`Processing download queue: ${queue.articles.length} articles, ${queue.activeDownloads} active downloads`);
 
   // Check if we're still rate limited globally
   if (isRateLimited && Date.now() < rateLimitEndTime) {
@@ -618,20 +512,36 @@ async function processDownloadQueue(sessionId: string, auth: { cookieString: str
 
     downloadArticleContent(sessionId, pending.article, auth)
       .then(() => {
-        pending.status = 'completed';
-        resetBackoff(); // Reset backoff on successful download
+        // Check the actual status in the queue (it might have been set to 'error' in downloadArticleContent)
+        if (pending.status !== 'error') {
+          pending.status = 'completed';
+          resetBackoff(); // Reset backoff on successful download
+        }
         
-        // Update download count
+        // Update download count (including both completed and errors)
         if (updateSession) {
           const completedCount = queue.articles.filter(item => item.status === 'completed').length;
+          const errorCount = queue.articles.filter(item => item.status === 'error').length;
           exportStore.updateDownloadTask(sessionId, {
-            count: completedCount
+            count: completedCount + errorCount
           });
         }
       })
       .catch((error) => {
-        pending.status = 'error';
-        pending.error = error.message;
+        // Status might already be set to 'error' in downloadArticleContent
+        if (pending.status !== 'error') {
+          pending.status = 'error';
+          pending.error = error.message;
+        }
+        
+        // Update download count including errors
+        if (updateSession) {
+          const completedCount = queue.articles.filter(item => item.status === 'completed').length;
+          const errorCount = queue.articles.filter(item => item.status === 'error').length;
+          exportStore.updateDownloadTask(sessionId, {
+            count: completedCount + errorCount
+          });
+        }
         
         // Check if it's a rate limit error
         if (error.message === 'Rate limit max retries' || error.message?.includes('rate limit')) {
@@ -682,6 +592,8 @@ export function startArticleDownloads(
   auth: { cookieString: string; headers: Record<string, string> },
   updateSession: boolean = true
 ): void {
+  console.log(`Starting article downloads for session ${sessionId} with ${articles.length} articles`);
+  
   let queue = downloadQueues.get(sessionId);
   
   if (!queue) {
@@ -698,23 +610,32 @@ export function startArticleDownloads(
   queue.articles = [];
 
   // Add articles to queue in the order they appear in the array (newest to oldest from UI)
+  let pendingCount = 0;
+  let completedCount = 0;
+  
   articles.forEach(article => {
-    const isDownloaded = isArticleDownloaded(sessionId, article.savedId);
+    // Check specifically for original.html, not article.html
+    const originalHtmlPath = path.join(getArticleDir(sessionId, article.savedId), 'original.html');
+    const hasOriginalHtml = fs.existsSync(originalHtmlPath);
     
-    if (isDownloaded) {
+    if (hasOriginalHtml) {
       // Add to queue as completed, but mark for image check
       queue!.articles.push({
         article,
         status: 'completed',
       });
+      completedCount++;
     } else {
       // Add as pending for full download
       queue!.articles.push({
         article,
         status: 'pending',
       });
+      pendingCount++;
     }
   });
+  
+  console.log(`Download queue: ${pendingCount} pending, ${completedCount} already completed`);
 
   // Update download task status in session only if requested
   if (updateSession) {
@@ -740,7 +661,7 @@ async function processExistingArticlesForImages(
   articles: Article[],
   auth: { cookieString: string; headers: Record<string, string> }
 ): Promise<void> {
-  // Filter articles that have HTML but might be missing images
+  // Filter articles that have original HTML
   const articlesWithHtml = articles.filter(article => 
     isArticleDownloaded(sessionId, article.savedId)
   );
@@ -751,7 +672,7 @@ async function processExistingArticlesForImages(
   
   console.log(`Checking ${articlesWithHtml.length} downloaded articles for missing images...`);
   
-  // Process articles sequentially to avoid overwhelming the API
+  // Process articles sequentially to avoid overwhelming downloads
   for (const article of articlesWithHtml) {
     // Check if downloads were stopped
     if (shouldStopDownload(sessionId)) {
@@ -759,16 +680,19 @@ async function processExistingArticlesForImages(
       break;
     }
     
-    try {
-      await downloadArticleContent(sessionId, article, auth, true); // onlyImages = true
-    } catch (error: any) {
-      // Handle rate limit errors
-      if (error.message === 'Rate limit max retries' || error.message?.includes('rate limit')) {
-        console.log('Rate limit reached while checking images, stopping...');
-        break;
+    const articlesDir = getArticleDir(sessionId, article.savedId);
+    const articleIndexPath = path.join(articlesDir, 'index.json');
+    
+    // Load article metadata to get image URLs
+    if (fs.existsSync(articleIndexPath)) {
+      try {
+        const articleData = JSON.parse(fs.readFileSync(articleIndexPath, 'utf8'));
+        // Download images from metadata
+        await downloadArticleImages(sessionId, article, articleData);
+      } catch (error: any) {
+        console.error(`Error processing images for article ${article.savedId}:`, error.message);
+        // Continue with next article even if one fails
       }
-      console.error(`Error checking images for article ${article.savedId}:`, error.message);
-      // Continue with next article even if one fails
     }
   }
 }
@@ -790,11 +714,19 @@ export async function downloadSingleArticle(
   sessionId: string,
   article: Article,
   auth: { cookieString: string; headers: Record<string, string> }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; alreadyDownloaded?: boolean }> {
   try {
+    // Check if article is already downloaded
+    if (isArticleDownloaded(sessionId, article.savedId)) {
+      console.log(`Article ${article.savedId} already downloaded`);
+      // Still check for missing images
+      await downloadArticleContent(sessionId, article, auth, true); // onlyImages = true
+      return { success: true, alreadyDownloaded: true };
+    }
+    
     // Download article content directly without going through the queue
     await downloadArticleContent(sessionId, article, auth);
-    return { success: true };
+    return { success: true, alreadyDownloaded: false };
   } catch (error: any) {
     console.error(`Error downloading article ${article.savedId}:`, error.message);
     return { success: false, error: error.message };
@@ -810,46 +742,78 @@ export function getDownloadStatus(sessionId: string, articles?: any[]): {
 } {
   const articleStatus: Record<string, 'pending' | 'downloading' | 'completed' | 'error'> = {};
   
-  // Get status from the active download queue if it exists
+  // Early return if no articles
+  if (!articles || articles.length === 0) {
+    return {
+      total: 0,
+      completed: 0,
+      downloading: 0,
+      errors: 0,
+      articleStatus
+    };
+  }
+  
+  // Get currently downloading items from the active queue
   const queue = downloadQueues.get(sessionId);
-  let downloading = 0;
-  let errors = 0;
+  const currentlyDownloading = new Set<string>();
   
   if (queue) {
     queue.articles.forEach(item => {
-      articleStatus[item.article.savedId] = item.status;
-      if (item.status === 'downloading') downloading++;
-      if (item.status === 'error') errors++;
-    });
-  }
-  
-  // Check filesystem for all articles (not just ones in queue)
-  if (articles && articles.length > 0) {
-    articles.forEach((article: Article) => {
-      // Skip if already tracked by queue
-      if (articleStatus[article.savedId]) return;
-      
-      // Check if article.html exists
-      const articleHtmlPath = getArticleHtmlPath(sessionId, article.savedId);
-      if (fs.existsSync(articleHtmlPath)) {
-        articleStatus[article.savedId] = 'completed';
-      } else {
-        articleStatus[article.savedId] = 'pending';
+      if (item.status === 'downloading') {
+        currentlyDownloading.add(item.article.savedId);
       }
     });
   }
   
-  // Count totals
+  let downloading = 0;
+  let errors = 0;
   let completed = 0;
-  let total = 0;
   
-  Object.values(articleStatus).forEach(status => {
-    total++;
-    if (status === 'completed') completed++;
+  // Always check filesystem for accurate status
+  // Batch process articles to check filesystem more efficiently
+  const articlesDir = path.join(process.cwd(), 'sessions', sessionId, 'articles');
+  
+  // First, get a set of all article directories that have original.html
+  const completedArticles = new Set<string>();
+  try {
+    // Read all directories at once to minimize filesystem calls
+    const articleDirs = fs.readdirSync(articlesDir, { withFileTypes: true });
+    
+    // Check each directory for original.html
+    for (const dir of articleDirs) {
+      if (dir.isDirectory()) {
+        try {
+          const originalHtmlPath = path.join(articlesDir, dir.name, 'original.html');
+          const stats = fs.statSync(originalHtmlPath);
+          if (stats.size > 0) {
+            completedArticles.add(dir.name);
+          }
+        } catch (e) {
+          // File doesn't exist, skip
+        }
+      }
+    }
+  } catch (e) {
+    // Directory doesn't exist or error reading it
+    console.error('Error reading articles directory:', e);
+  }
+  
+  // Now process each article
+  articles.forEach((article: Article) => {
+    // Check if currently downloading from queue
+    if (currentlyDownloading.has(article.savedId)) {
+      articleStatus[article.savedId] = 'downloading';
+      downloading++;
+    } else if (completedArticles.has(article.savedId)) {
+      articleStatus[article.savedId] = 'completed';
+      completed++;
+    } else {
+      articleStatus[article.savedId] = 'pending';
+    }
   });
 
   return {
-    total,
+    total: Object.keys(articleStatus).length,
     completed,
     downloading,
     errors,

@@ -17,12 +17,6 @@ import {
 
 const ARTICLES_PER_REQUEST = 1000;
 
-interface FetchState {
-  cursor: string | null;
-  totalFetched: number;
-  articlesMap: Record<string, any>;
-  lastSaveTime: number;
-}
 
 export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   console.log(`Starting fetch articles task for session ${sessionId}`);
@@ -61,34 +55,13 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
 
   const SESSION_DIR = path.join(process.cwd(), 'sessions', sessionId);
   const ARTICLES_DIR = path.join(SESSION_DIR, 'articles');
-  const STATE_FILE = path.join(SESSION_DIR, '.fetch_state.json');
 
   // Create articles directory if it doesn't exist
   if (!fs.existsSync(ARTICLES_DIR)) {
     fs.mkdirSync(ARTICLES_DIR, { recursive: true });
   }
 
-  // Load saved state
-  function loadState(): FetchState | null {
-    try {
-      if (fs.existsSync(STATE_FILE)) {
-        const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-        console.log(`Resuming from cursor: ${state.cursor}`);
-        console.log(`Previously fetched: ${state.totalFetched} articles`);
-        return state;
-      }
-    } catch (e: any) {
-      console.error('Error loading state:', e.message);
-    }
-    return null;
-  }
-
-  // Save state
-  function saveState(state: FetchState) {
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
-  }
-
-  // Build the GraphQL query - matches EXACTLY what Pocket returns
+  // Build the GraphQL query - request ALL fields including readerSlug and article content
   const query = buildGraphQLQuery(`
     query GetSavedItems(
       $filter: SavedItemsFilter
@@ -102,14 +75,10 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
             node {
               ...SavedItemDetails
               item {
+                ...ItemDetails
                 ... on Item {
-                  isArticle
-                  hasImage
-                  hasVideo
-                  timeToRead
-                  shareId: id
-                  itemId
-                  givenUrl
+                  readerSlug
+                  article
                   preview {
                     ...ItemPreview
                   }
@@ -127,17 +96,15 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
         }
       }
     }
-  `, ['SavedItemDetails', 'ItemPreview']);
+  `, ['SavedItemDetails', 'ItemDetails', 'ItemPreview']);
 
-  // Initialize or load state
-  let state = loadState();
-  let cursor = session.currentFetchTask?.cursor || (state ? state.cursor : null);
-  let totalFetched = state ? state.totalFetched : 0;
-  let articlesMap = state ? state.articlesMap : {};
+  // Initialize cursor from session
+  let cursor = session.currentFetchTask?.cursor || null;
+  let totalFetched = 0;
 
-  // Variables
+  // Variables - fetch ALL articles regardless of status
   const variables: any = {
-    filter: { statuses: ["UNREAD", "ARCHIVED"] },
+    // No filter property at all to get all articles
     sort: { sortBy: "CREATED_AT", sortOrder: "DESC" },
     pagination: { first: ARTICLES_PER_REQUEST }
   };
@@ -232,42 +199,19 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       console.log(`Fetched ${edges.length} articles`);
       pagesFetched++;
 
-      // Process articles
-      let pageArticleCount = 0;
-      for (const edge of edges) {
-        if (!edge || !edge.node) continue;
-        const article = edge.node;
-        if (!article.savedId) continue;
-        
-        // Check if we should stop before processing each article
-        if (shouldStop()) {
-          console.log('\n⏹️  Fetch task stopped by user during processing');
-          hasMore = false;
-          break;
-        }
-        
-        pageArticleCount++;
-        
-        // Deep merge if article already exists
-        if (articlesMap[article.savedId]) {
-          articlesMap[article.savedId] = deepMerge(articlesMap[article.savedId], article);
-        } else {
-          articlesMap[article.savedId] = article;
-        }
-      }
+      // Update total fetched count
+      totalFetched += edges.filter((edge: any) => edge?.node?.savedId).length;
       
-      // Update total fetched count with articles from this page
-      totalFetched += pageArticleCount;
-      
-      // If stopped, break out of the main loop
-      if (!hasMore && shouldStop()) {
-        break;
-      }
       
       // Update session with progress - use totalFetched for count
+      // Note: Pocket's API may report incorrect totalCount (e.g., capped at 5000)
+      // So we use the greater of totalCount or totalFetched
+      const reportedTotal = savedItems.totalCount || 0;
+      const estimatedTotal = Math.max(reportedTotal, totalFetched);
+      
       exportStore.updateFetchTask(sessionId, {
         count: totalFetched,
-        total: savedItems.totalCount || totalFetched,
+        total: pageInfo.hasNextPage ? estimatedTotal + 1000 : estimatedTotal, // Add buffer if more pages exist
         rateLimitedAt: undefined,
         rateLimitRetryAfter: undefined
       });
@@ -284,20 +228,23 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
           fs.mkdirSync(articleDir, { recursive: true });
         }
         
+        // Always create a copy to avoid modifying the original
+        const articleCopy = JSON.parse(JSON.stringify(article));
+        
+        // Check if article HTML content is included (should only be at item.article)
+        if (articleCopy.item?.article) {
+          const articleContent = articleCopy.item.article;
+          delete articleCopy.item.article;
+          
+          // Save the HTML content separately
+          const articleHtmlPath = path.join(articleDir, 'article.html');
+          fs.writeFileSync(articleHtmlPath, articleContent);
+          console.log(`  ✓ Saved article HTML for ${savedId}`);
+        }
+        
+        // Always save the metadata (without article content)
         const articlePath = path.join(articleDir, 'index.json');
-        fs.writeFileSync(articlePath, JSON.stringify(article, null, 2));
-      }
-      
-      // Save state periodically
-      if (pagesFetched % 5 === 0 || edges.length < ARTICLES_PER_REQUEST) {
-        const currentState: FetchState = {
-          cursor: pageInfo.endCursor || cursor,
-          totalFetched,
-          articlesMap,
-          lastSaveTime: Date.now()
-        };
-        saveState(currentState);
-        console.log(`Saved state. Total unique articles: ${Object.keys(articlesMap).length}`);
+        fs.writeFileSync(articlePath, JSON.stringify(articleCopy, null, 2));
       }
       
       // Update session with current cursor and progress
@@ -316,15 +263,6 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
     } catch (error: any) {
       console.error('Error fetching articles:', error);
       
-      // Save current state before exiting
-      const errorState: FetchState = {
-        cursor,
-        totalFetched,
-        articlesMap,
-        lastSaveTime: Date.now()
-      };
-      saveState(errorState);
-      
       exportStore.updateFetchTask(sessionId, {
         status: 'error',
         error: error.message,
@@ -335,11 +273,8 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   }
   
   // Final summary
-  const articlesArray = Object.values(articlesMap);
-  
   console.log('\n📊 Summary:');
-  console.log(`Total unique articles: ${articlesArray.length}`);
-  console.log(`New articles fetched: ${totalFetched}`);
+  console.log(`Total articles fetched: ${totalFetched}`);
   console.log(`Articles saved to: ${ARTICLES_DIR}`);
   
   // Update final status
@@ -347,16 +282,11 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
   exportStore.updateFetchTask(sessionId, {
     status: finalStatus,
     count: totalFetched,
-    total: articlesArray.length,
+    total: totalFetched,
     endedAt: new Date(),
     cursor: undefined,
     currentID: undefined
   });
-  
-  // Clean up state file if completed
-  if (finalStatus === 'completed' && fs.existsSync(STATE_FILE)) {
-    fs.unlinkSync(STATE_FILE);
-  }
 }
 
 // Run if called directly

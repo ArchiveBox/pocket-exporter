@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const sessionId = searchParams.get('sessionId');
+    const sessionId = searchParams.get('session');
     const lastFetchedCount = searchParams.get('lastFetchedCount');
 
     if (!sessionId) {

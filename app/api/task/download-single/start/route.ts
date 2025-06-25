@@ -5,7 +5,7 @@ import { downloadSingleArticle } from '@/lib/article-downloader';
 export async function POST(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const sessionId = searchParams.get('sessionId');
+    const sessionId = searchParams.get('session');
     const articleId = searchParams.get('articleId');
 
     if (!sessionId || !articleId) {
@@ -46,7 +46,8 @@ export async function POST(request: NextRequest) {
 
     if (result.success) {
       return NextResponse.json({
-        success: true
+        success: true,
+        alreadyDownloaded: result.alreadyDownloaded || false
       });
     } else {
       return NextResponse.json(

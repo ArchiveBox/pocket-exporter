@@ -4,7 +4,7 @@ import { stopDownloads } from '@/lib/article-downloader';
 export async function POST(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const sessionId = searchParams.get('sessionId');
+    const sessionId = searchParams.get('session');
 
     if (!sessionId) {
       return NextResponse.json(

@@ -145,12 +145,12 @@ export default function PocketExportApp() {
     },
     {
       title: "Find GraphQL Request",
-      description: "Go to Network tab, search for 'graphql', and find a request",
+      description: "Go to the Network tab, click the record icon, refresh, then search for 'graphql' in the requests",
       icon: <Search className="w-5 h-5" />,
     },
     {
       title: "Copy Request",
-      description: "Right-click the request and copy as 'fetch (Node.js)'",
+      description: "Right-click any getpocket.com/graphql request and Copy as 'fetch (Node.js)'",
       icon: <Copy className="w-5 h-5" />,
     },
     {
@@ -190,26 +190,15 @@ export default function PocketExportApp() {
     // Function to fetch status
     const fetchStatus = async () => {
       try {
-        const statusResponse = await fetch(`/api/export/status?sessionId=${sessionId}`)
+        const statusResponse = await fetch(`/api/status?session=${sessionId}`)
         const statusData = await statusResponse.json()
 
         // Update the entire session data
         setSessionData(statusData)
         
-        // Update download status only if it has valid values and has changed
-        if (statusData.downloadStatus && statusData.downloadStatus.total >= 0) {
-          setDownloadStatus(prevStatus => {
-            // Only update if the new status makes sense and has changed
-            if (!prevStatus || 
-                (statusData.downloadStatus.total > 0 && 
-                 (prevStatus.completed !== statusData.downloadStatus.completed ||
-                  prevStatus.downloading !== statusData.downloadStatus.downloading ||
-                  prevStatus.total !== statusData.downloadStatus.total))) {
-              return statusData.downloadStatus;
-            }
-            // Keep previous status if new one seems invalid or unchanged
-            return prevStatus;
-          })
+        // Update download status - always update to reflect actual filesystem state
+        if (statusData.downloadStatus) {
+          setDownloadStatus(statusData.downloadStatus);
         }
         
         // Update session size
@@ -220,7 +209,7 @@ export default function PocketExportApp() {
         // Update step when we have auth
         if (statusData.auth && currentStep < 5) {
           setCurrentStep(5)
-          setIsParsedRequestCollapsed(true)
+          // Don't set collapsed state here - let user control it
         }
 
         // Update articles with the full list from the server
@@ -245,7 +234,7 @@ export default function PocketExportApp() {
     if (!sessionId || articles.length === 0) return
 
     try {
-      const response = await fetch(`/api/task/download-articles/start?sessionId=${sessionId}`, {
+      const response = await fetch(`/api/task/download-articles/start?session=${sessionId}`, {
         method: 'POST'
       })
       
@@ -263,7 +252,7 @@ export default function PocketExportApp() {
     if (!sessionId) return
 
     try {
-      const response = await fetch(`/api/task/fetch-articles-list/stop?sessionId=${sessionId}`, {
+      const response = await fetch(`/api/task/fetch-articles-list/stop?session=${sessionId}`, {
         method: 'POST'
       })
       
@@ -286,7 +275,7 @@ export default function PocketExportApp() {
     if (!sessionId) return
 
     try {
-      const response = await fetch(`/api/task/download-articles/stop?sessionId=${sessionId}`, {
+      const response = await fetch(`/api/task/download-articles/stop?session=${sessionId}`, {
         method: 'POST'
       })
       
@@ -312,7 +301,7 @@ export default function PocketExportApp() {
     }
 
     try {
-      const response = await fetch(`/api/task/fetch-articles-list/start?sessionId=${sessionId}`, {
+      const response = await fetch(`/api/task/fetch-articles-list/start?session=${sessionId}`, {
         method: 'POST',
       })
 
@@ -344,12 +333,12 @@ export default function PocketExportApp() {
       <div className="max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Pocket Data Exporter</h1>
-          <p className="text-lg text-gray-600">Export your saved articles from Mozilla Pocket</p>
+          <p className="text-lg text-gray-600">Export your saved articles from Mozilla Pocket.<br/>Export all your bookmark URLs, titles, excerpts, tags, saved article text, and more.</p>
         </div>
 
 
         {/* Steps Guide */}
-        <Card className="mb-8">
+        {!sessionId && <Card className="mb-8">
             <CardHeader>
               <CardTitle>Export Process</CardTitle>
               <CardDescription>Follow these steps to export your Pocket data</CardDescription>
@@ -379,8 +368,8 @@ export default function PocketExportApp() {
               ))}
             </div>
           </CardContent>
-        </Card>
-
+        </Card> || ''}
+  
         {/* Fetch Request Input */}
         {!parsedRequest && (
           <Card className="mb-8">
@@ -420,7 +409,7 @@ export default function PocketExportApp() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Parsed Request Data</CardTitle>
+                  <CardTitle>Pocket Authentication</CardTitle>
                   <CardDescription>
                     {isParsedRequestCollapsed 
                       ? "Click to expand and update authentication" 
@@ -494,9 +483,9 @@ export default function PocketExportApp() {
                 <div className="space-y-1">
                   {sessionId && <div>Session ID: {sessionId}</div>}
                   <div className="flex gap-4 text-sm">
-                    <span>Articles fetched: <strong>{articles.length}</strong></span>
-                    <span>Content downloaded: <strong>{downloadTask.count}/{articles.length}</strong></span>
-                    <span>Total size: <strong>{sessionSizeMB.toFixed(2)} MB</strong></span>
+                    <span>Articles pulled (metadata + text): <strong>{articles.length}</strong></span>
+                    <span>Original HTML downloaded: <strong>{downloadTask.count}/{articles.length}</strong></span>
+                    <span>Total export size: <strong>{sessionSizeMB.toFixed(2)} MB</strong></span>
                   </div>
                 </div>
               </CardDescription>
@@ -506,7 +495,7 @@ export default function PocketExportApp() {
                 {/* Article Fetching Section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-medium">Article List Fetching</h4>
+                    <h4 className="font-medium">Import from Pocket</h4>
                     {(isExporting || isRateLimited) && <Clock className="w-4 h-4 animate-pulse text-gray-500" />}
                   </div>
                   
@@ -520,7 +509,7 @@ export default function PocketExportApp() {
                     <span className="text-gray-600">
                       {fetchTask.status === 'running' || isRateLimited ? (
                         <>
-                          Fetching articles... ({fetchTask.count}/{fetchTask.total || '?'})
+                          Fetching articles... ({fetchTask.count}/{fetchTask.total > 0 ? (fetchTask.total > fetchTask.count ? `${fetchTask.total}+` : fetchTask.total) : '?'})
                           {isRateLimited && (
                             <span className="text-orange-600 font-medium">
                               {' '}(Rate limited - retrying in {rateLimitRetryAfter}s)
@@ -548,10 +537,10 @@ export default function PocketExportApp() {
                 </div>
 
                 {/* Content Downloading Section */}
-                {articles.length > 0 && (
+                {false && articles.length > 0 && (
                   <div className="space-y-3 pt-3 border-t">
                     <div className="flex items-center justify-between">
-                      <h4 className="font-medium">Content Downloading</h4>
+                      <h4 className="font-medium">Original HTML & Image Downloading &nbsp; <span className="text-orange-500">[BETA]</span> &nbsp; &nbsp; &nbsp; <small className="text-xs text-gray-500">(attempts to fetch live HTML from original URLs using curl)</small></h4>
                       {(isDownloading || isDownloadRateLimited) && 
                         <Clock className="w-4 h-4 animate-pulse text-gray-500" />
                       }
@@ -594,7 +583,7 @@ export default function PocketExportApp() {
                         size="sm"
                         variant={isDownloading ? "destructive" : "default"}
                       >
-                        {isDownloading ? "Stop Downloads" : "Download Content"}
+                        {isDownloading ? "Stop HTML & Image Downloading" : "Download HTML & Images"}
                       </Button>
                     </div>
                   </div>
@@ -603,7 +592,7 @@ export default function PocketExportApp() {
                 {/* Session URL */}
                 {sessionId && (
                   <div className="p-3 bg-blue-50 rounded-lg border-t">
-                    <p className="text-sm font-medium text-blue-900 mb-1">Session URL</p>
+                    <p className="text-sm font-medium text-blue-900 mb-1">Visit this URL anytime to view live export progress</p>
                     <div className="flex items-center gap-2">
                       <code className="text-xs bg-white px-2 py-1 rounded flex-1 overflow-x-auto">
                         {typeof window !== 'undefined' ? window.location.origin : ''}{router ? `?session=${sessionId}` : ''}
@@ -677,7 +666,7 @@ export default function PocketExportApp() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          window.open(`/api/export/download?sessionId=${sessionId}&format=json`, '_blank')
+                          window.open(`/api/session/json?session=${sessionId}`, '_blank')
                         }}
                       >
                         <FileDown className="w-4 h-4 mr-2" />
@@ -686,7 +675,7 @@ export default function PocketExportApp() {
                       <Button
                         size="sm"
                         onClick={() => {
-                          window.open(`/api/export/download?sessionId=${sessionId}&format=zip`, '_blank')
+                          window.open(`/api/session/zip?session=${sessionId}`, '_blank')
                         }}
                       >
                         <FileDown className="w-4 h-4 mr-2" />
@@ -738,7 +727,7 @@ export default function PocketExportApp() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" style={{ contain: 'layout' }}>
-                {filteredArticles.slice(0, 100).map((article) => {
+                {filteredArticles.map((article) => {
                   const isCurrentlyDownloading = downloadTask.currentID === article.savedId;
                   return (
                     <Card 
@@ -755,7 +744,7 @@ export default function PocketExportApp() {
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <CardContent className="p-4">
+                    <CardContent className="p-3 pb-0">
                       <div className="flex items-start justify-between mb-2">
                         <h3 className="font-semibold text-lg line-clamp-2 flex-1">{article.title}</h3>
                         <Avatar 
@@ -769,27 +758,44 @@ export default function PocketExportApp() {
                             if (downloadStatus?.articleStatus?.[article.savedId] === 'completed') {
                               // Download the HTML file
                               window.open(
-                                `/api/export/article-html?sessionId=${sessionId}&articleId=${article.savedId}`,
+                                `/api/article/html?session=${sessionId}&savedId=${article.savedId}`,
                                 '_blank'
                               );
                             } else {
                               // Trigger download for this article
+                              console.log(`Downloading single article: ${article.savedId}`);
                               try {
                                 const response = await fetch(
-                                  `/api/task/download-single/start?sessionId=${sessionId}&articleId=${article.savedId}`,
+                                  `/api/task/download-single/start?session=${sessionId}&articleId=${article.savedId}`,
                                   { method: 'POST' }
                                 );
                                 
+                                const data = await response.json();
+                                console.log('Download single response:', data);
+                                
                                 if (!response.ok) {
-                                  const error = await response.json();
-                                  alert(`Error: ${error.error}`);
+                                  alert(`Error: ${data.error}`);
                                 } else {
+                                  // If already downloaded, update status immediately
+                                  if (data.alreadyDownloaded) {
+                                    setDownloadStatus(prev => {
+                                      if (!prev) return null;
+                                      return {
+                                        ...prev,
+                                        articleStatus: {
+                                          ...prev.articleStatus,
+                                          [article.savedId]: 'completed'
+                                        }
+                                      };
+                                    });
+                                  }
                                   // Start polling if not already running
                                   if (!pollIntervalRef.current) {
                                     startStatusPolling(sessionId);
                                   }
                                 }
                               } catch (error) {
+                                console.error('Download single error:', error);
                                 alert('Failed to start download');
                               }
                             }
@@ -813,7 +819,7 @@ export default function PocketExportApp() {
 
                       <div className="flex items-center space-x-2 text-sm text-gray-600 mb-3">
                         <Globe className="w-4 h-4" />
-                        <span className="truncate">
+                        <a className="truncate" href={article.url} rel="noopener noreferrer">
                           {(() => {
                             try {
                               return new URL(article.url).hostname;
@@ -821,7 +827,8 @@ export default function PocketExportApp() {
                               return article.item.domainMetadata?.name || 'Unknown domain';
                             }
                           })()}
-                        </span>
+                        </a>
+                        <span className="text-xs text-gray-500 float-right">{new Date(article._createdAt * 1000).toLocaleDateString()}</span>
                       </div>
 
                       {article.tags.length > 0 && (
@@ -839,22 +846,16 @@ export default function PocketExportApp() {
                           )}
                         </div>
                       )}
-
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">{new Date(article._createdAt * 1000).toLocaleDateString()}</span>
-                        <Button size="sm" variant="outline" onClick={() => window.open(article.url, "_blank")}>
-                          <ExternalLink className="w-4 h-4" />
-                        </Button>
-                      </div>
                       
-                      <div className="mt-2 pt-2 border-t">
+                      <div className="mt-2 pt-2 border-t mb-2" style={{textAlign: 'center'}}>
                         <a 
                           href={`https://getpocket.com/read/${article.item.readerSlug || article.savedId}`}
-                          target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                          className="text-xs text-gray-400 hover:text-red-400 transition-colors"
                         >
-                          Pocket ID: {article.savedId} 📄
+                          <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" className="icon" style={{height: '24px', display: 'inline-block'}}><path fill-rule="evenodd" d="M1 4a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2zm2 0v2h18V4z" clip-rule="evenodd"></path><path fill-rule="evenodd" d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zm2 10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8H5z" clip-rule="evenodd"></path><path fill-rule="evenodd" d="M15.707 11.293a1 1 0 0 1 0 1.414l-4 4a1 1 0 0 1-1.414 0l-2-2a1 1 0 1 1 1.414-1.414L11 14.586l3.293-3.293a1 1 0 0 1 1.414 0" clip-rule="evenodd"></path></svg> 
+                          &nbsp;&nbsp;
+                          Pocket ID: #<code>{article.savedId}</code>
                         </a>
                       </div>
                     </CardContent>
@@ -862,11 +863,6 @@ export default function PocketExportApp() {
                   )
                 })}
               </div>
-              {filteredArticles.length > 100 && (
-                <div className="mt-6 text-center text-sm text-gray-600">
-                  Showing first 100 of {filteredArticles.length} results. Refine your search to see more.
-                </div>
-              )}
             </CardContent>
           </Card>
 

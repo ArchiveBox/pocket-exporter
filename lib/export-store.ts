@@ -3,7 +3,7 @@ import path from 'path';
 import { Article } from '@/types/article';
 import { enrichArticleWithFallbackImages } from './image-utils';
 
-import { deepMerge, isObject, getArticleDir } from './helpers';
+import { getArticleDir } from './helpers';
 
 interface ExportSession {
   id: string; // session id based on pocket consumer key
@@ -289,78 +289,6 @@ class ExportStore {
     }
   }
 
-  addArticles(id: string, articles: Article[]): void {
-    const session = this.getSession(id);
-    if (session) {
-      // Save articles to disk
-      this.saveArticlesToDisk(session, articles);
-      
-      // Get the current total count from disk
-      const currentArticleCount = this.getSessionArticleIds(id).length;
-      
-      // Update fetch task count with the actual count from disk
-      session.currentFetchTask.count = currentArticleCount;
-      session.lastModifiedAt = new Date();
-      
-      // Update session file
-      this.saveSessionToDisk(session);
-    }
-  }
-
-  private saveArticlesToDisk(session: ExportSession, newArticles: Article[]): string[] {
-    const newArticleIds: string[] = [];
-    
-    try {
-      const sessionDir = path.join(this.sessionsDir, session.id);
-      const articlesDir = path.join(sessionDir, 'articles');
-      
-      // Save each article in its own directory
-      newArticles.forEach(article => {
-        const articleDir = path.join(articlesDir, article.savedId);
-        const isNewArticle = !fs.existsSync(articleDir);
-        
-        if (!fs.existsSync(articleDir)) {
-          fs.mkdirSync(articleDir, { recursive: true });
-        }
-        
-        // Deep merge with existing article if it exists
-        const indexPath = path.join(articleDir, 'index.json');
-        let mergedArticle = article;
-        
-        if (fs.existsSync(indexPath)) {
-          try {
-            const existingArticle = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-            // Deep merge: new data overwrites old data
-            mergedArticle = deepMerge(existingArticle, article);
-          } catch (error) {
-            console.error(`Failed to merge article ${article.savedId}:`, error);
-          }
-        }
-        
-        fs.writeFileSync(indexPath, JSON.stringify(mergedArticle, null, 2));
-        
-        // Track only truly new articles
-        if (isNewArticle) {
-          newArticleIds.push(article.savedId);
-        }
-        
-        // TODO: Later we can add article.html, images, etc. here
-      });
-      
-      // No need for separate metadata.json anymore
-      
-      // Create a simple articles.json with just the list of article IDs for quick reference
-      const articlesListPath = path.join(sessionDir, 'articles.json');
-      const articleIds = fs.existsSync(articlesDir) 
-        ? fs.readdirSync(articlesDir).filter(dir => fs.statSync(path.join(articlesDir, dir)).isDirectory())
-        : [];
-      fs.writeFileSync(articlesListPath, JSON.stringify(articleIds, null, 2));
-    } catch (error) {
-      console.error(`Failed to save articles to disk for session ${session.id}:`, error);
-    }
-    
-    return newArticleIds;
-  }
 
 }
 
@@ -382,11 +310,5 @@ if (process.env.NODE_ENV === 'production') {
   exportStore = globalWithStore.__exportStore;
 }
 
-// Clean up old sessions every 30 minutes
-if (typeof window === 'undefined') {
-  setInterval(() => {
-    exportStore.cleanupOldSessions();
-  }, 30 * 60 * 1000);
-}
 
 export { exportStore };

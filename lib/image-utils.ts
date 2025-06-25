@@ -70,7 +70,7 @@ export function enrichArticleWithFallbackImages(article: any, sessionId: string)
   return {
     ...article,
     fallbackImageUrls: fallbackImages.map(img => 
-      `/api/export/article-html/${sessionId}/${article.savedId}/${img}`
+      `/api/article/image/${encodeURIComponent(img)}?session=${sessionId}&savedId=${article.savedId}`
     )
   };
 }
