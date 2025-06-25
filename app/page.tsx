@@ -611,10 +611,28 @@ export default function PocketExportApp() {
                     {(isExporting || isRateLimited) && <Clock className="w-4 h-4 animate-pulse text-gray-500" />}
                   </div>
                   
+                  {/* Show error message if fetch task has error */}
+                  {fetchTask.status === 'error' && fetchTask.error && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-red-800">Fetch Error</p>
+                          <p className="text-sm text-red-700 mt-1">{fetchTask.error}</p>
+                          {fetchTask.error === 'Authentication expired' && (
+                            <p className="text-sm text-red-600 mt-2">
+                              Please update your authentication by pasting a fresh request above.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Article fetch progress bar */}
                   <Progress 
                     value={fetchTask.total > 0 ? (fetchTask.count / fetchTask.total) * 100 : 0} 
-                    className={`w-full h-2 ${isRateLimited ? '[&>div]:bg-orange-500' : ''}`}
+                    className={`w-full h-2 ${isRateLimited ? '[&>div]:bg-orange-500' : ''} ${fetchTask.status === 'error' ? '[&>div]:bg-red-500' : ''}`}
                   />
                   
                   <div className="flex items-center justify-between text-sm">
