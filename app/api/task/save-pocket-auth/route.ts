@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exportStore } from '@/lib/export-store';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 interface ParsedAuth {
   cookies: Record<string, string>;
@@ -122,20 +125,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract consumer key from cookies if not already found
-    if (!consumerKey) {
-      consumerKey = cookieString.split('a95b4b6=')[1]?.split(';')[0] || '';
-    }
+    // Extract AUTH_BEARER token from cookies
+    const authBearer = cookieString.split('AUTH_BEARER_default=')[1]?.split(';')[0];
     
-    if (!consumerKey) {
+    if (!authBearer) {
       return NextResponse.json(
-        { success: false, error: 'Could not extract consumer key from cookies' },
+        { success: false, error: 'Could not extract AUTH_BEARER token from cookies' },
         { status: 400 }
       );
     }
 
-    // Create a session ID based on consumer key
-    const sessionId = `${consumerKey.substring(0, 5)}-${consumerKey.substring(consumerKey.length - 25)}`;
+    // Create a stable session ID by hashing the AUTH_BEARER token
+    const bearerHash = crypto
+      .createHash('sha256')
+      .update(authBearer)
+      .digest('hex');
+    
+    // Create a readable session ID from the hash
+    const sessionId = `pocket-${bearerHash.substring(0, 8)}-${bearerHash.substring(bearerHash.length - 8)}`;
     
     // Get the session URL from the request
     const sessionUrl = request.headers.get('referer') || '';
@@ -145,6 +152,34 @@ export async function POST(request: NextRequest) {
       cookieString,
       headers
     }, sessionUrl.split('?')[0] + `?session=${sessionId}`);
+
+    // Create symlinks from old session formats to maintain compatibility
+    const sessionsDir = path.join(process.cwd(), 'sessions');
+    
+    // Look for existing sessions that might be from the same user
+    // We'll check for old consumer-key based session IDs
+    if (consumerKey) {
+      const oldSessionId = `${consumerKey.substring(0, 5)}-${consumerKey.substring(consumerKey.length - 25)}`;
+      const oldSessionPath = path.join(sessionsDir, oldSessionId);
+      const newSessionPath = path.join(sessionsDir, sessionId);
+      
+      // If old session exists and new session is different, create symlink
+      if (fs.existsSync(oldSessionPath) && oldSessionId !== sessionId) {
+        try {
+          // Remove symlink if it already exists
+          if (fs.existsSync(oldSessionPath) && fs.lstatSync(oldSessionPath).isSymbolicLink()) {
+            fs.unlinkSync(oldSessionPath);
+          }
+          
+          // Create symlink from old to new
+          fs.symlinkSync(newSessionPath, oldSessionPath, 'dir');
+          console.log(`Created symlink: ${oldSessionId} -> ${sessionId}`);
+        } catch (error) {
+          console.error('Error creating symlink:', error);
+          // Not critical, so we continue
+        }
+      }
+    }
 
     return NextResponse.json({ 
       success: true,
