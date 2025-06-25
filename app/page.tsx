@@ -101,6 +101,13 @@ export default function PocketExportApp() {
     }
   }, [sessionId])
 
+  // Automatically expand auth section when there's an authentication error
+  useEffect(() => {
+    if (fetchTask.status === 'error' && fetchTask.error === 'Authentication expired') {
+      setIsParsedRequestCollapsed(false)
+    }
+  }, [fetchTask.status, fetchTask.error])
+
   // Handle filter input changes
   const handleFilterChange = useCallback(() => {
     if (filterTimeoutRef.current) {
@@ -658,11 +665,13 @@ export default function PocketExportApp() {
                     <Button 
                       onClick={isExporting || isRateLimited ? stopFetchArticles : startFetchArticles}
                       size="sm"
-                      variant={isExporting || isRateLimited ? "destructive" : "default"}
-                      disabled={!sessionId && !isExporting && !isRateLimited}
-                      className={!isExporting && !isRateLimited && sessionId ? "bg-green-600 hover:bg-green-700 text-white animate-pulse shadow-lg shadow-green-600/25" : ""}
+                      variant={isExporting || isRateLimited ? "destructive" : fetchTask.status === 'error' && fetchTask.error === 'Authentication expired' ? "outline" : "default"}
+                      disabled={(!sessionId && !isExporting && !isRateLimited) || (fetchTask.status === 'error' && fetchTask.error === 'Authentication expired')}
+                      className={!isExporting && !isRateLimited && sessionId && fetchTask.status !== 'error' ? "bg-green-600 hover:bg-green-700 text-white animate-pulse shadow-lg shadow-green-600/25" : ""}
                     >
-                      {isExporting || isRateLimited ? "Stop Fetching" : sessionId ? "Fetch Articles" : "Auth Required"}
+                      {isExporting || isRateLimited ? "Stop Fetching" : 
+                       fetchTask.status === 'error' && fetchTask.error === 'Authentication expired' ? "Fresh Pocket Auth Required" :
+                       sessionId ? "Fetch Articles" : "Auth Required"}
                     </Button>
                   </div>
                 </div>
