@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
     let session = await exportStore.getSession(sessionId);
 
     if (!session) {
-      console.error('Session not found:', sessionId);
+      // Only log if it's not an old consumer key format (which we expect to fail)
+      // Consumer keys look like: 94110--6d5ff7a89d72c869766af0e0 or 459T7-c99KcH9T882115Y4fvj1qt72b
+      if (!sessionId.match(/^[\w\d]{5}-[\w-]+$/)) {
+        console.log('Session not found:', sessionId);
+      }
       return NextResponse.json(
         { error: 'Session not found' },
         { status: 404 }
