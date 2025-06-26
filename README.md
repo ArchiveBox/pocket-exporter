@@ -65,25 +65,75 @@ sessions/
 ### Article JSON Schema
 ```json
 {
-  "savedId": "3847592847",
-  "item": {
-    "itemId": "3847592847",
-    "givenUrl": "https://example.com/article",
-    "resolvedUrl": "https://example.com/article",
-    "title": "Article Title",
-    "excerpt": "Article excerpt...",
-    "wordCount": 1234,
-    "timeToRead": 5,
-    "topImageUrl": "https://example.com/image.jpg",
-    "authors": [{"name": "Author Name"}],
-    "images": [...],
-    "videos": [...],
-    "tags": ["tag1", "tag2"]
-  },
-  "_updatedAt": 1674839485,
-  "_createdAt": 1674839485,
+  "_createdAt": 1745783047,
+  "_updatedAt": 1745783047,
+  "title": "Article Title",
+  "url": "https://example.com/original/article/url",
+  "savedId": "956339233",
+  "status": "UNREAD",
+  "isFavorite": false,
   "favoritedAt": null,
-  "archivedAt": 1674839500
+  "isArchived": false,
+  "archivedAt": null,
+  "tags": [
+    {"id": "ZGF0YWJhc2VzX194cGt0eHRhZ3hfXw==", "name": "databases"},
+  ],
+  "annotations": {
+    "highlights": []
+  },
+  "item": {
+    "isArticle": true,
+    "title": "Article Title",
+    "shareId": "2e3dtp25T247ec458bAfnIkA3cgdT9f8f71kafc603h224x02ebdfl19a5ekj2d4_1a8c2a615b265f6c7e627dd9ecc14e03",
+    "itemId": "956339233",
+    "readerSlug": "2e3dtp25T247ec458bAfnIkA3cgdT9f8f71kafc603h224x02ebdfl19a5ekj2d4_1a8c2a615b265f6c7e627dd9ecc14e03",
+    "resolvedId": "956339233",
+    "resolvedUrl": "https://example.com/original/article/url",
+    "domain": null,
+    "domainMetadata": {"name": "example.com"},
+    "excerpt": "Exceprt of article text...",
+    "hasImage": "HAS_IMAGES",   // or NO_IMAGES
+    "hasVideo": "HAS_VIDEOS",   // or NO_VIDEOS
+    "images": [
+        {
+        "caption": "Some image caption",
+        "credit": "Some image credit...",
+        "height": 200,
+        "imageId": 1,
+        "src": "https://example.com/some/image/url.png",
+        "width": 200
+      },
+    ],
+    "videos": [
+      {
+        "vid": "",
+        "videoId": 1,
+        "type": "HTML5",
+        "src": "https://example.com/some/video.mp4"
+      }
+    ],
+    "topImageUrl": "https://example.com/original/article/url/image.png",
+    "timeToRead": 7,
+    "givenUrl": "https://example.com/original/article/url",
+    "collection": null,
+    "authors": [{"id": "23432434", "name": "Article Author Name", "url": "https://example.com/author/url"}],
+    "datePublished": "2024-06-14T21:32:00.000Z",
+    "syndicatedArticle": null,
+    "preview": {
+      "previewId": "2e3dtp25T247ec458bAfnIkA3cgdT9f8f71kafc603h224x02ebdfl19a5ekj2d4_1a8c2a615b265f6c7e627dd9ecc14e03",
+      "id": "2e3dtp25T247ec458bAfnIkA3cgdT9f8f71kafc603h224x02ebdfl19a5ekj2d4_1a8c2a615b265f6c7e627dd9ecc14e03",
+      "image": ... same format as above images ...,
+      "excerpt": "Exceprt of article text...",
+      "title": "Article Title",
+      "authors": null,
+      "domain": {
+        "name": "example.com"
+      },
+      "datePublished": "2024-06-14T21:32:00.000Z",
+      "url": "https://example.com/original/article/url"
+    }
+  },
+  "archivedotorg_url": "https://web.archive.org/web/https://example.com/original/article/url"
 }
 ```
 
