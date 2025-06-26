@@ -225,8 +225,17 @@ Here are some alternative apps that can replace Pocket.
 - https://github.com/hoarder-app/hoarder
 - https://github.com/ArchiveBox/ArchiveBox
 - https://raindrop.io
-- https://github.com/karlicoss/pockexport
+- https://listy.is/import/pocket/
+- https://www.maxai.co/getpocket/export-pocket-list/
+- https://www.maketecheasier.com/import-instapaper-to-pocket/
+- https://obsidian.rocks/the-best-free-pocket-alternative-obsidian/
 - And more here: https://github.com/ArchiveBox/ArchiveBox/wiki/Web-Archiving-Community#bookmarking-services
+
+**Other export tools:**
+
+- https://tildegit.org/exquisitecorp/bookmobile
+- https://github.com/thgossler/pocket-bookmark-export
+- https://github.com/karlicoss/pockexport
 
 ## 📄 License
 
