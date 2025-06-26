@@ -216,18 +216,21 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 - **Deletable**: One-click delete removes all your data
 - **Payment info**: Only payment status stored, no credit card data
 
-## 🤝 Contributing
+## ✨ Pocket Alternatives
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Open a Pull Request
+Here are some alternative apps that can replace Pocket.
+
+- https://linkwarden.app/ ⭐️
+- https://www.unpocket.me
+- https://github.com/hoarder-app/hoarder
+- https://github.com/ArchiveBox/ArchiveBox
+- https://raindrop.io
+- https://github.com/karlicoss/pockexport
+- And more here: https://github.com/ArchiveBox/ArchiveBox/wiki/Web-Archiving-Community#bookmarking-services
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License
 
 ## 🙏 Acknowledgments
 
@@ -236,7 +239,8 @@ Built with frustration after discovering Pocket's official export is essentially
 ## 🔗 Related Projects
 
 - [ArchiveBox](https://github.com/ArchiveBox/ArchiveBox) - Self-hosted internet archiving
-- [Pocket API Documentation](https://getpocket.com/developer/) - Official (limited) API
+- [Pocket API Documentation](https://getpocket.com/developer/) - Official (extremely limited) API
+- [Pocket CSV Export](https://support.mozilla.org/en-US/kb/exporting-your-pocket-list) - Official (extremely limited) CSV export
 
 ---
 
