@@ -229,6 +229,8 @@ Here are some alternative apps that can replace Pocket.
 - https://www.maxai.co/getpocket/export-pocket-list/
 - https://www.maketecheasier.com/import-instapaper-to-pocket/
 - https://obsidian.rocks/the-best-free-pocket-alternative-obsidian/
+- https://docs.readwise.io/reader/docs/faqs/importing-content
+- https://doc.wallabag.org/user/import/pocket/
 - And more here: https://github.com/ArchiveBox/ArchiveBox/wiki/Web-Archiving-Community#bookmarking-services
 
 **Other export tools:**
@@ -244,7 +246,7 @@ MIT License
 
 ## 🙏 Acknowledgments
 
-Built with frustration after discovering Pocket's official export is essentially useless for archival purposes. Special thanks to everyone who helped test this before relese.
+Built with frustration after discovering Pocket's official export is essentially useless for archival purposes. Special thanks to everyone who helped test this.
 
 ## 🔗 Related Links
 
