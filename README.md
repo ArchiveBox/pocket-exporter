@@ -242,6 +242,7 @@ Built with frustration after discovering Pocket's official export is essentially
 - [Pocket Shutdown Annoucement Post](https://getpocket.com/farewell) - Their official announcement of shutdown in Oct 2025
 - [Pocket API Documentation](https://getpocket.com/developer/) - Official (extremely limited) API
 - [Pocket CSV Export](https://support.mozilla.org/en-US/kb/exporting-your-pocket-list) - Official (extremely limited) CSV export
+- [r/DataHoarder Discussion Thread](https://www.reddit.com/r/DataHoarder/comments/1lkgbbh/psa_export_all_your_pocket_bookmarks_and_saved/) - Discussion about this projeect
 
 ---
 
