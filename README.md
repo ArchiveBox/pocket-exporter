@@ -150,6 +150,11 @@ The tool requires your Pocket session cookies to access your data:
 
 Your credentials are only used to fetch your data and can be deleted anytime.
 
+After you fetch the first 100 articles succesfully, the payment form will pop up and ask for payment to continue with the full export.
+
+![image](https://github.com/user-attachments/assets/d0b9452f-fd62-4cee-8d4a-daa5bbc29205)
+
+
 ## 🛠️ Development Setup
 
 ### Prerequisites
