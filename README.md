@@ -141,7 +141,7 @@ sessions/
 
 The tool requires your Pocket session cookies to access your data:
 
-1. Log into [getpocket.com](https://getpocket.com)
+1. Log into [getpocket.com](https://getpocket.com) using Chrome (Firefox not supported yet)
 2. Open Developer Tools (F12)
 3. Go to Network tab
 4. Find any `graphql` request to getpocket.com
