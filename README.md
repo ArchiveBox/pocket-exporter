@@ -245,6 +245,7 @@ Here are some alternative apps that can replace Pocket.
 - https://github.com/karlicoss/pockexport
 - https://github.com/LudWittg/Pocket-exporter
 - https://github.com/cshtdd/pocket-data-exporter
+- https://github.com/brpaz/pocket-exporter
 
 ## 📄 License
 
