@@ -227,11 +227,15 @@ Here are some alternative apps that can replace Pocket.
 
 - https://linkwarden.app/ ⭐️
 - https://www.unpocket.me
-- https://github.com/hoarder-app/hoarder
+- https://github.com/hoarder-app/hoarder (aka Karakeep)
 - https://github.com/ArchiveBox/ArchiveBox
 - https://raindrop.io
+- https://linkding.link/
+- https://fika.bar/
+- https://doublememory.com/
 - https://listy.is/import/pocket/
 - https://www.maxai.co/getpocket/export-pocket-list/
+- https://glasp.co/login?callback_url=/settings/integrations
 - https://www.maketecheasier.com/import-instapaper-to-pocket/
 - https://obsidian.rocks/the-best-free-pocket-alternative-obsidian/
 - https://docs.readwise.io/reader/docs/faqs/importing-content
@@ -246,6 +250,7 @@ Here are some alternative apps that can replace Pocket.
 - https://github.com/LudWittg/Pocket-exporter
 - https://github.com/cshtdd/pocket-data-exporter
 - https://github.com/brpaz/pocket-exporter
+- https://github.com/open-pocket/open-pocket
 
 ## 📄 License
 
