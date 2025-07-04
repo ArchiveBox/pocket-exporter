@@ -235,6 +235,7 @@ Here are some alternative apps that can replace Pocket.
 - https://doublememory.com/
 - https://listy.is/import/pocket/
 - https://www.maxai.co/getpocket/export-pocket-list/
+- https://dailyintel.co/migrate
 - https://glasp.co/login?callback_url=/settings/integrations
 - https://www.maketecheasier.com/import-instapaper-to-pocket/
 - https://obsidian.rocks/the-best-free-pocket-alternative-obsidian/
