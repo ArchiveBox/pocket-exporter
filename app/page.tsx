@@ -589,6 +589,7 @@ export default function PocketExportApp() {
                 </div>
               ))}
               <img src="/tutorial.jpg" alt="Pocket Authentication Tutorial" className="w-full h-auto" />
+              <img src="/tutorial2.jpg" alt="Pocket Authentication Tutorial New" className="w-full h-auto" />
             </div>
           </CardContent>
         </Card> || ''}
