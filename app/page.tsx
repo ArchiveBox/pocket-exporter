@@ -102,6 +102,7 @@ export default function PocketExportApp() {
   const filterInputRef = useRef<HTMLInputElement>(null)
   const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const sessionNotFoundRef = useRef(false)
+  const statusRequestInFlightRef = useRef(false)
 
   // Check for existing session in URL on mount
   useEffect(() => {
@@ -275,7 +276,16 @@ export default function PocketExportApp() {
         return
       }
       
+      // Don't fetch if a request is already in flight
+      if (statusRequestInFlightRef.current) {
+        console.log('Status request already in flight, skipping...')
+        return
+      }
+      
       try {
+        // Mark that we're starting a request
+        statusRequestInFlightRef.current = true
+        
         const statusResponse = await fetch(`/api/status?session=${sessionId}`)
         
         // Check if session was not found
@@ -357,6 +367,9 @@ export default function PocketExportApp() {
         }
       } catch (error) {
         console.error('Status polling error:', error)
+      } finally {
+        // Always clear the in-flight flag when done (success or error)
+        statusRequestInFlightRef.current = false
       }
     }
     
