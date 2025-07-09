@@ -5,6 +5,48 @@ import { getSessionSizeInMB, readPaymentData, updatePaymentData, fetchCompletePa
 import { stripe } from '@/lib/stripe';
 import { execSync } from 'child_process';
 import { withTiming } from '@/lib/with-timing';
+import { getRateLimitStatus, loadRateLimitState } from '@/lib/rate-limiter';
+import type { Article } from '@/types/article';
+
+// Minimal article type for status response to reduce payload size
+interface MinimalArticle {
+  title: string;
+  url: string;
+  savedId: string;
+  tags: Array<{ id: string; name: string }>;
+  _createdAt: number;
+  item?: {
+    readerSlug?: string;
+    domainMetadata?: {
+      name?: string;
+    };
+    hasVideo?: string;
+    givenUrl?: string;
+  };
+  archivedotorg_url?: string;
+  fallbackImageUrls?: string[];
+}
+
+// Function to convert full Article to MinimalArticle
+function toMinimalArticle(article: Article): MinimalArticle {
+  return {
+    title: article.title,
+    url: article.url,
+    savedId: article.savedId,
+    tags: article.tags.map(tag => ({ id: tag.id, name: tag.name })),
+    _createdAt: article._createdAt,
+    item: article.item ? {
+      readerSlug: article.item.readerSlug,
+      domainMetadata: article.item.domainMetadata ? {
+        name: article.item.domainMetadata.name
+      } : undefined,
+      hasVideo: article.item.hasVideo,
+      givenUrl: article.item.givenUrl
+    } : undefined,
+    archivedotorg_url: article.archivedotorg_url,
+    fallbackImageUrls: article.fallbackImageUrls
+  };
+}
 
 export const GET = withTiming(async (request: NextRequest) => {
   try {
@@ -214,13 +256,44 @@ export const GET = withTiming(async (request: NextRequest) => {
       } : undefined
     };
     
+    // Load rate limit state from session first
+    await loadRateLimitState(sessionId);
+    
+    // Get rate limit status
+    const rateLimitStatus = getRateLimitStatus(sessionId);
+    
+    // Debug log if in slow mode
+    // if (rateLimitStatus.isInSlowMode) {
+    //   const now = Date.now();
+    //   const nextTime = new Date(rateLimitStatus.nextRequestAvailable).getTime();
+    //   const secondsUntilNext = Math.round((nextTime - now) / 1000);
+    //   console.log(`Rate limit status: slow mode, next request in ${secondsUntilNext}s`);
+    //   console.log(`  nextRequestAvailable: ${rateLimitStatus.nextRequestAvailable.toISOString()}`);
+    //   console.log(`  now: ${new Date(now).toISOString()}`);
+    //   console.log(`  difference: ${nextTime - now}ms`);
+    // }
+    
+    // Debug logging
+    // if (rateLimitStatus.requestsInLastHour > 0) {
+    //   console.log(`Rate limit status for ${sessionId}:`, {
+    //     requestsInLastHour: rateLimitStatus.requestsInLastHour,
+    //     isInSlowMode: rateLimitStatus.isInSlowMode,
+    //     nextRequestAvailable: rateLimitStatus.nextRequestAvailable
+    //   });
+    // }
+    
+    
+    // Convert articles to minimal format to reduce payload size
+    const minimalArticles = allArticles.map(toMinimalArticle);
+    
     // Return session.json with sensitive data stripped and articles added
     return NextResponse.json({
       ...sanitizedSession,
-      articles: allArticles,
+      articles: minimalArticles,
       downloadStatus,
       sessionSizeMB,
-      paymentData
+      paymentData,
+      rateLimitStatus
     });
 
   } catch (error) {

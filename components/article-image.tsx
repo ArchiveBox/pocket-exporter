@@ -13,19 +13,9 @@ export function ArticleImage({ article, className = '' }: ArticleImageProps) {
   // Build the full list of image URLs to try
   const imageUrls: string[] = [];
   
-  // First try the local fallback images from disk
+  // Use all image URLs from fallbackImageUrls (includes local, topImageUrl, and cachedImages)
   if (article.fallbackImageUrls?.length > 0) {
     imageUrls.push(...article.fallbackImageUrls);
-  }
-  
-  // Then try the featured image
-  if (article.item?.topImageUrl) {
-    imageUrls.push(article.item.topImageUrl);
-  }
-  
-  // Finally try cached preview images if available
-  if (article.item?.preview?.image?.cachedImages?.length > 0) {
-    imageUrls.push(...article.item.preview.image.cachedImages.map((img: any) => img.url));
   }
 
   // Reset when article changes

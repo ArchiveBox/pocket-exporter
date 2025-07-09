@@ -4,12 +4,13 @@ import { useState, useRef, useMemo, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import React from "react"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
+import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Article } from "@/types/article"
 import { ArticleImage } from "@/components/article-image"
 import { PaywallSection } from "@/components/PaywallSection"
@@ -28,6 +29,37 @@ function formatDate(date: string | Date | null | undefined): string {
   if (isNaN(d.getTime())) return 'Invalid date';
   return d.toLocaleString();
 }
+
+// Separate component for countdown to avoid rerenders
+const RateLimitCountdown = React.memo(({ nextRequestAvailable, isInSlowMode }: { nextRequestAvailable: string, isInSlowMode: boolean }) => {
+  const [countdown, setCountdown] = useState<number | null>(null);
+  
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = Date.now();
+      const nextTime = new Date(nextRequestAvailable).getTime();
+      const diff = Math.max(0, nextTime - now);
+      setCountdown(diff);
+    };
+    
+    updateCountdown(); // Initial update
+    const interval = setInterval(updateCountdown, 100); // Update every 100ms
+    
+    return () => clearInterval(interval);
+  }, [nextRequestAvailable]);
+  
+  if (countdown === null) return null;
+  
+  const seconds = Math.floor(Math.abs(countdown) / 1000);
+  const ms = Math.abs(countdown) % 1000;
+  const isOverdue = countdown < 0;
+  
+  return (
+    <span className={`text-xs ml-2 ${isOverdue ? 'text-red-600 font-medium' : isInSlowMode ? 'text-orange-600 font-medium' : 'text-gray-500'}`}>
+      {isOverdue ? 'overdue by ' : 'next in '}{seconds}.{String(ms).padStart(3, '0')}s{isInSlowMode && ' - throttled'}
+    </span>
+  );
+});
 
 export default function PocketExportApp() {
   const router = useRouter()
@@ -60,7 +92,10 @@ export default function PocketExportApp() {
   const [isParsedRequestCollapsed, setIsParsedRequestCollapsed] = useState(false)
   const [sessionSizeMB, setSessionSizeMB] = useState<number>(0)
   const [paymentData, setPaymentData] = useState<any>(null)
+  const [rateLimitStatus, setRateLimitStatus] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [isDownloadingZip, setIsDownloadingZip] = useState(false)
+  const [hasReceivedFirstResponse, setHasReceivedFirstResponse] = useState(false)
   const ITEMS_PER_PAGE = 24 // 24 items per page for a nice grid
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentArticleCountRef = useRef(0)
@@ -95,6 +130,9 @@ export default function PocketExportApp() {
     
     // Reset session not found flag when session changes
     sessionNotFoundRef.current = false
+    
+    // Reset first response flag when session changes
+    setHasReceivedFirstResponse(false)
     
     // Start polling if we have a sessionId
     if (sessionId) {
@@ -266,6 +304,11 @@ export default function PocketExportApp() {
         
         const statusData = await statusResponse.json()
 
+        // Mark that we've received the first response
+        if (!hasReceivedFirstResponse) {
+          setHasReceivedFirstResponse(true)
+        }
+
         // Update the entire session data
         setSessionData(statusData)
         
@@ -287,6 +330,18 @@ export default function PocketExportApp() {
         // Update payment data
         if (statusData.paymentData) {
           setPaymentData(statusData.paymentData);
+        }
+        
+        // Update rate limit status
+        if (statusData.rateLimitStatus) {
+          setRateLimitStatus(statusData.rateLimitStatus);
+          // Debug log rate limit status
+          // if (statusData.rateLimitStatus.requestsInLastHour > 0) {
+          //   console.log('Frontend rate limit status:', {
+          //     ...statusData.rateLimitStatus,
+          //     hasNextRequestAvailable: !!statusData.rateLimitStatus.nextRequestAvailable
+          //   });
+          // }
         }
 
         // Update step when we have auth
@@ -479,7 +534,7 @@ export default function PocketExportApp() {
               </div>
               <div className="text-center sm:text-left">
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">💎 $8 one-time fee for full export</h3>
-                <p className="text-gray-600">Up to 50,000 articles + Permanent Library</p>
+                <p className="text-gray-600">Up to 100k articles + Permanent Library</p>
               </div>
             </div>
           </div>
@@ -615,9 +670,21 @@ export default function PocketExportApp() {
                 <div className="space-y-1">
                   {sessionId && <div>Session ID: {sessionId}</div>}
                   <div className="flex gap-4 text-sm">
-                    <span>Articles pulled (metadata + text): <strong>{articles.length}</strong>{!paymentData?.hasUnlimitedAccess && articles.length >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</span>
-                    <span title="click the 📸 icon on individual articles below to include their live images and HTML into the export (50MB limit per article)">Article images downloaded: <strong>{downloadStatus?.completed || 0}/{articles.length}</strong></span>
-                    <span>Total export size: <strong>{sessionSizeMB.toFixed(2)} MB</strong></span>
+                    <span>Articles pulled (metadata + text): {sessionId && !hasReceivedFirstResponse ? (
+                      <Loader2 className="w-4 h-4 inline animate-spin" />
+                    ) : (
+                      <><strong>{articles.length}</strong>{!paymentData?.hasUnlimitedAccess && articles.length >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</>
+                    )}</span>
+                    <span title="click the 📸 icon on individual articles below to include their live images and HTML into the export (50MB limit per article)">Article images downloaded: {sessionId && !hasReceivedFirstResponse ? (
+                      <Loader2 className="w-4 h-4 inline animate-spin" />
+                    ) : (
+                      <strong>{downloadStatus?.completed || 0}/{articles.length}</strong>
+                    )}</span>
+                    <span>Total export size: {sessionId && !hasReceivedFirstResponse ? (
+                      <Loader2 className="w-4 h-4 inline animate-spin" />
+                    ) : (
+                      <strong>{sessionSizeMB.toFixed(2)} MB</strong>
+                    )}</span>
                   </div>
                   {sessionData && (
                     <div className="flex gap-4 text-xs text-gray-500 mt-2">
@@ -696,10 +763,27 @@ export default function PocketExportApp() {
                       disabled={(!sessionId && !isExporting && !isRateLimited) || (fetchTask.error === 'Authentication expired')}
                       className={!isExporting && !isRateLimited && sessionId && !fetchTask.error ? "bg-green-600 hover:bg-green-700 text-white animate-pulse shadow-lg shadow-green-600/25" : ""}
                     >
-                      {isExporting || isRateLimited ? "Stop Fetching" : 
+                      {isExporting || isRateLimited ? "Pause Fetching" : 
                        fetchTask.error === 'Authentication expired' ? "Fresh Pocket Auth Required" :
                        sessionId ? "Fetch Articles" : "Auth Required"}
                     </Button>
+                  </div>
+                </div>
+
+                {/* Rate Limit Status - Always show */}
+                <div className="space-y-2 pt-1 pb-2">
+                  <div className="text-sm text-gray-600">
+                    Requests in last hour: <strong className="text-orange-700">{rateLimitStatus?.requestsInLastHour || 0}</strong><strong>/100</strong>
+                    {rateLimitStatus && rateLimitStatus.nextRequestAvailable && (
+                      <>
+                        <RateLimitCountdown 
+                          nextRequestAvailable={rateLimitStatus.nextRequestAvailable} 
+                          isInSlowMode={rateLimitStatus.isInSlowMode} 
+                        />
+                      </>
+                    )}
+
+                    <span className="text-xs text-gray-500" style={{float: 'right'}}><code>100 requests/hr</code> ✖️ <code>100 articles/request</code> 🟰 <code>10k articles/hr</code> rate limit imposed by Pocket API</span>
                   </div>
                 </div>
 
@@ -757,7 +841,7 @@ export default function PocketExportApp() {
                 )}
 
                 {paymentData?.hasUnlimitedAccess && (
-                  <div className="text-sm text-green-600 flex items-center gap-1 mt-1">
+                  <div className="text-sm text-green-600 flex items-center flex-grow gap-1 mt-1">
                     <CheckCircle className="w-3 h-3" />
                     {paymentData?.payment?.receiptUrl ? (
                       <a 
@@ -767,10 +851,10 @@ export default function PocketExportApp() {
                         className="hover:underline"
                         title="View payment receipt"
                       >
-                        Purchased. Unlimited export enabled.
+                        Purchased. Unlimited exports enabled.
                       </a>
                     ) : (
-                      <span>Purchased. Unlimited export enabled.</span>
+                      <span>Purchased. Unlimited exports enabled.</span>
                     )}
                     &nbsp;
                     <small className="text-xs text-gray-500">Open a <a href="https://github.com/ArchiveBox/pocket-exporter/issues" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700">Github issue</a> if you need support.</small>
@@ -781,7 +865,7 @@ export default function PocketExportApp() {
                 {sessionId && (
                   <div className="p-3 bg-blue-50 rounded-lg border-t">
                     <p className="text-sm font-medium text-blue-900 mb-1">Visit this URL anytime to view live export progress</p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 mb-2">
                       <code className="text-xs bg-white px-2 py-1 rounded flex-1 overflow-x-auto">
                         {typeof window !== 'undefined' ? window.location.origin : ''}/{router ? `?session=${sessionId}` : ''}
                       </code>
@@ -795,6 +879,15 @@ export default function PocketExportApp() {
                       >
                         <Copy className="w-4 h-4" />
                       </Button>
+                    </div>
+                    <div className="bg-yellow-100 border border-yellow-300 rounded p-2">
+                      <p className="text-xs text-yellow-800 font-semibold mb-1">⚠️ IMPORTANT: DO NOT LOSE THIS URL</p>
+                      <p className="text-xs text-yellow-700">
+                        This URL is the only thing tied to your payment. Pocket can be re-authorized and the export can be continued/restarted from this page without requiring any additional payments.
+                      </p>
+                      <p className="text-xs text-yellow-700 mt-1">
+                        If you go back to the homepage and put in a fresh GraphQL request, we have no way to link your existing payment and it will treat you as a new user.
+                      </p>
                     </div>
                   </div>
                 )}
@@ -827,13 +920,35 @@ export default function PocketExportApp() {
             </CardContent>
           </Card>
         )}
+        
+        {/* Slow Mode Warning */}
+        {!isRateLimited && rateLimitStatus?.isInSlowMode && (fetchTask.status === 'running' || fetchTask.status === 'idle') && articles.length > 0 && (
+          <Card className="mb-8 border-blue-200 bg-orange-50">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2 text-orange-800">
+                <Clock className="w-5 h-5" />
+                <span>Rate Limiting Active</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-orange-700">
+                To avoid hitting Pocket's rate limits, 
+                we're now limiting exports to ~10k articles per hour (~{rateLimitStatus.requestsInLastHour}/hr). This ensures your export completes without getting forcibly logged out by Pocket.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Articles Grid */}
         <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Your Articles ({articles.length})</CardTitle>
+                  <CardTitle>Your Articles {sessionId && !hasReceivedFirstResponse ? (
+                    <Loader2 className="w-4 h-4 inline animate-spin ml-2" />
+                  ) : (
+                    <>({articles.length})</>
+                  )}</CardTitle>
                   <CardDescription>
                     {articles.length === 0 
                       ? "Click 'Fetch Articles' to start importing your Pocket articles" 
@@ -865,16 +980,56 @@ export default function PocketExportApp() {
                         }}
                       >
                         <FileDown className="w-4 h-4 mr-2" />
-                        JSON ({articles.length})
+                        JSON {hasReceivedFirstResponse && `(${articles.length})`}
                       </Button>
                       <Button
                         size="sm"
+                        variant="outline"
                         onClick={() => {
                           window.open(`/api/session/zip?session=${sessionId}`, '_blank')
                         }}
+                        title="Creates entire ZIP in memory before sending - may timeout on large exports (>10k articles)"
                       >
                         <FileDown className="w-4 h-4 mr-2" />
-                        ZIP ({articles.length})
+                        ZIP
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          setIsDownloadingZip(true);
+                          try {
+                            // Create an invisible anchor element to trigger download
+                            const link = document.createElement('a');
+                            link.href = `/api/session/zip-stream?session=${sessionId}`;
+                            link.download = `pocket-export-${sessionId}.zip`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            
+                            // Keep spinner for a few seconds to indicate processing
+                            setTimeout(() => {
+                              setIsDownloadingZip(false);
+                            }, 3000);
+                          } catch (error) {
+                            console.error('Download error:', error);
+                            setIsDownloadingZip(false);
+                          }
+                        }}
+                        disabled={isDownloadingZip}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        title="Streams ZIP data as it's created - recommended for all exports, especially large ones"
+                      >
+                        {isDownloadingZip ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Preparing...
+                          </>
+                        ) : (
+                          <>
+                            <FileDown className="w-4 h-4 mr-2" />
+                            ZIP (stream)
+                          </>
+                        )}
                       </Button>
                     </div>
                     {exportProgress < 100 && (

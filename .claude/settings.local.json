@@ -17,7 +17,9 @@
       "Bash(cp:*)",
       "Bash(find:*)",
       "Bash(rg:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(tsx:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

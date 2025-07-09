@@ -69,10 +69,26 @@ export async function enrichArticleWithFallbackImages(article: any, sessionId: s
   const articleDir = path.join(process.cwd(), 'sessions', sessionId, 'articles', article.savedId);
   const fallbackImages = await findFallbackImages(articleDir);
   
+  // Collect all image URLs
+  const allImageUrls: string[] = [];
+  
+  // First add local fallback images
+  allImageUrls.push(...fallbackImages.map(img => 
+    `/api/article/image/${encodeURIComponent(img)}?session=${sessionId}&savedId=${article.savedId}`
+  ));
+  
+  // Then add the featured image if available
+  if (article.item?.topImageUrl) {
+    allImageUrls.push(article.item.topImageUrl);
+  }
+  
+  // Finally add cached preview images if available
+  if (article.item?.preview?.image?.cachedImages?.length > 0) {
+    allImageUrls.push(...article.item.preview.image.cachedImages.map((img: any) => img.url));
+  }
+  
   return {
     ...article,
-    fallbackImageUrls: fallbackImages.map(img => 
-      `/api/article/image/${encodeURIComponent(img)}?session=${sessionId}&savedId=${article.savedId}`
-    )
+    fallbackImageUrls: allImageUrls
   };
 }

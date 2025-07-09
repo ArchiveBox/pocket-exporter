@@ -44,6 +44,9 @@ interface ExportSession {
     rateLimitRetryAfter?: number;
     cursor?: string;
     error?: string;
+    rateLimitState?: {
+      requestTimes: number[]; // Rolling buffer of last 100 request timestamps
+    };
   };
 }
 
@@ -92,13 +95,13 @@ class ExportStore {
         existingSession.sessionUrl = sessionUrl;
       }
       
-      // Reset fetch task status but preserve the actual article count
+      // Reset fetch task status but preserve the actual article count and cursor
       const currentArticleCount = (await this.getSessionArticleIds(id)).length;
       existingSession.currentFetchTask = {
         status: 'idle',
         count: currentArticleCount,
         total: currentArticleCount,
-        cursor: null
+        cursor: existingSession.currentFetchTask?.cursor || null
       };
       
       await this.saveSessionToDisk(existingSession);

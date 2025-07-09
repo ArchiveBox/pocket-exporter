@@ -5,6 +5,10 @@ import path from 'path';
 import archiver from 'archiver';
 import { withTiming } from '@/lib/with-timing';
 
+// Disable Next.js buffering for this route to enable true streaming
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export const GET = withTiming(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -37,35 +41,66 @@ export const GET = withTiming(async (request: NextRequest) => {
 
     // Create a ZIP file containing all exported data
     const archive = archiver('zip', {
-      zlib: { level: 9 } // Maximum compression
+      zlib: { level: 6 } // Reduced compression for faster streaming
     });
 
     // Set response headers for ZIP download
     const headers = new Headers();
     headers.set('Content-Type', 'application/zip');
     headers.set('Content-Disposition', `attachment; filename="pocket-export-${sessionId}.zip"`);
+    headers.set('Cache-Control', 'no-cache, no-store');
+    headers.set('X-Content-Type-Options', 'nosniff');
 
-    // Create a stream for the response
+    // Create a more robust stream implementation
     const stream = new ReadableStream({
       async start(controller) {
-        archive.on('data', (chunk) => {
-          controller.enqueue(chunk);
-        });
+        try {
+          // Set up archive event handlers
+          archive.on('data', (chunk) => {
+            try {
+              controller.enqueue(new Uint8Array(chunk));
+            } catch (e) {
+              console.error('Error enqueueing chunk:', e);
+            }
+          });
 
-        archive.on('end', () => {
-          controller.close();
-        });
+          archive.on('end', () => {
+            console.log(`ZIP stream completed for session ${sessionId}`);
+            controller.close();
+          });
 
-        archive.on('error', (err) => {
-          controller.error(err);
-        });
+          archive.on('error', (err) => {
+            console.error('Archive error:', err);
+            controller.error(err);
+          });
 
-        // Add all files from the session directory
-        archive.directory(sessionPath, false);
+          archive.on('warning', (err) => {
+            console.warn('Archive warning:', err);
+          });
 
-        // Finalize the archive
-        await archive.finalize();
+          // Add progress logging - only log every 5000 files
+          archive.on('progress', (progress) => {
+            if (progress.entries.processed % 5000 === 0) {
+              console.log(`ZIP progress for ${sessionId}: ${progress.entries.processed} files processed`);
+            }
+          });
+
+          // Add all files from the session directory
+          // Use false to not include the sessionId directory itself
+          archive.directory(sessionPath, false);
+
+          // Finalize the archive
+          await archive.finalize();
+        } catch (error) {
+          console.error('Stream start error:', error);
+          controller.error(error);
+        }
       },
+      cancel() {
+        // Abort the archive if the stream is cancelled
+        archive.abort();
+        console.log(`ZIP stream cancelled for session ${sessionId}`);
+      }
     });
 
     return new NextResponse(stream, { headers });
