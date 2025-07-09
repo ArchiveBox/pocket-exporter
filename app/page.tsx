@@ -103,6 +103,7 @@ export default function PocketExportApp() {
   const filterTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const sessionNotFoundRef = useRef(false)
   const statusRequestInFlightRef = useRef(false)
+  const fetchStatusRef = useRef<() => Promise<void>>()
 
   // Check for existing session in URL on mount
   useEffect(() => {
@@ -121,6 +122,120 @@ export default function PocketExportApp() {
     }
   }, [sessionId, router, searchParams])
   
+  // Define fetchStatus as a standalone function that can be called anytime
+  const fetchStatus = useCallback(async () => {
+    if (!sessionId) return
+    
+    // Don't fetch if session was already not found
+    if (sessionNotFoundRef.current) {
+      return
+    }
+    
+    // Don't fetch if a request is already in flight
+    if (statusRequestInFlightRef.current) {
+      console.log('Status request already in flight, skipping...')
+      return
+    }
+    
+    try {
+      // Mark that we're starting a request
+      statusRequestInFlightRef.current = true
+      
+      // Always use pagination, pass filter to backend
+      const params = new URLSearchParams({
+        session: sessionId,
+        page: currentPage.toString(),
+        limit: ITEMS_PER_PAGE.toString()
+      })
+      if (debouncedFilterQuery) {
+        params.set('filter', debouncedFilterQuery)
+      }
+      const statusResponse = await fetch(`/api/status?${params.toString()}`)
+      
+      // Check if session was not found
+      if (statusResponse.status === 404) {
+        console.log('Session not found, redirecting to homepage')
+        sessionNotFoundRef.current = true
+        
+        // Stop polling immediately
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current)
+          pollIntervalRef.current = null
+        }
+        
+        // Clear all state
+        setSessionId('')
+        setArticles([])
+        setSessionData(null)
+        setDownloadStatus(null)
+        setSessionSizeMB(0)
+        setPaymentData(null)
+        
+        // Redirect to homepage
+        router.push('/')
+        return
+      }
+      
+      const statusData = await statusResponse.json()
+
+      // Mark that we've received the first response
+      if (!hasReceivedFirstResponse) {
+        setHasReceivedFirstResponse(true)
+      }
+
+      // Update the entire session data
+      setSessionData(statusData)
+      
+      // Debug: Log fetch task status when it has an error
+      if (statusData.currentFetchTask?.status === 'error') {
+        console.log('Fetch task error detected:', statusData.currentFetchTask);
+      }
+      
+      // Update download status - always update to reflect actual filesystem state
+      if (statusData.downloadStatus) {
+        setDownloadStatus(statusData.downloadStatus);
+      }
+      
+      // Update session size
+      if (typeof statusData.sessionSizeMB === 'number') {
+        setSessionSizeMB(statusData.sessionSizeMB)
+      }
+      
+      // Update payment data
+      if (statusData.paymentData) {
+        setPaymentData(statusData.paymentData);
+      }
+      
+      // Update rate limit status
+      if (statusData.rateLimitStatus) {
+        setRateLimitStatus(statusData.rateLimitStatus);
+      }
+
+      // Update step when we have auth
+      if (statusData.auth && currentStep < 5) {
+        setCurrentStep(5)
+        // Don't set collapsed state here - let user control it
+      }
+
+      // Update articles with the current page from the server
+      if (statusData.articles) {
+        setArticles(statusData.articles);
+        // Use totalArticleCount from the server instead of articles.length
+        currentArticleCountRef.current = statusData.totalArticleCount || statusData.articles.length;
+      }
+    } catch (error) {
+      console.error('Status polling error:', error)
+    } finally {
+      // Always clear the in-flight flag when done (success or error)
+      statusRequestInFlightRef.current = false
+    }
+  }, [sessionId, currentPage, debouncedFilterQuery, hasReceivedFirstResponse, currentStep, router])
+  
+  // Store the latest fetchStatus in a ref so polling can use it
+  useEffect(() => {
+    fetchStatusRef.current = fetchStatus
+  }, [fetchStatus])
+
   // Start polling on mount and whenever sessionId changes
   useEffect(() => {
     // Clear any existing interval
@@ -146,7 +261,14 @@ export default function PocketExportApp() {
         pollIntervalRef.current = null
       }
     }
-  }, [sessionId])
+  }, [sessionId]) // Only depend on sessionId, not fetchStatus
+  
+  // Fetch when filter or page changes
+  useEffect(() => {
+    if (sessionId && hasReceivedFirstResponse) {
+      fetchStatus()
+    }
+  }, [debouncedFilterQuery, currentPage, fetchStatus, sessionId, hasReceivedFirstResponse])
 
   // Automatically expand auth section when there's an authentication error
   useEffect(() => {
@@ -169,38 +291,12 @@ export default function PocketExportApp() {
     }, 300);
   }, []);
 
-  // Filter articles based on search query
-  const filteredArticles = useMemo(() => {
-    if (!debouncedFilterQuery.trim()) {
-      return articles;
-    }
-
-    const query = debouncedFilterQuery.toLowerCase();
-    return articles.filter(article => {
-      // Search in title
-      if (article.title.toLowerCase().includes(query)) {
-        return true;
-      }
-      
-      // Search in URL
-      if (article.url.toLowerCase().includes(query)) {
-        return true;
-      }
-      
-      // Search in tags
-      if (article.tags.some(tag => tag.name.toLowerCase().includes(query))) {
-        return true;
-      }
-      
-      return false;
-    });
-  }, [articles, debouncedFilterQuery]);
-
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredArticles.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedArticles = filteredArticles.slice(startIndex, endIndex);
+  // Articles are already filtered and paginated by the server
+  const paginatedArticles = articles;
+  
+  // Use filteredCount from sessionData for pagination calculations
+  const filteredCount = sessionData?.filteredCount || sessionData?.totalArticleCount || 0;
+  const totalPages = Math.ceil(filteredCount / ITEMS_PER_PAGE);
   
   // Ensure current page is valid when articles change
   useEffect(() => {
@@ -239,6 +335,27 @@ export default function PocketExportApp() {
     },
   ], [])
 
+  const startStatusPolling = (sessionId: string) => {
+    // Clear any existing interval first
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+    
+    // Immediately fetch once
+    if (fetchStatusRef.current) {
+      fetchStatusRef.current()
+    }
+    
+    // Then set up the interval
+    const interval = setInterval(() => {
+      if (fetchStatusRef.current) {
+        fetchStatusRef.current()
+      }
+    }, 3000) // Poll every 3 seconds
+    pollIntervalRef.current = interval
+  }
+
   const savePocketAuth = async () => {
     try {
       const response = await fetch('/api/task/save-pocket-auth', {
@@ -268,126 +385,8 @@ export default function PocketExportApp() {
     }
   }
 
-  const startStatusPolling = (sessionId: string) => {
-    // Function to fetch status
-    const fetchStatus = async () => {
-      // Don't fetch if session was already not found
-      if (sessionNotFoundRef.current) {
-        return
-      }
-      
-      // Don't fetch if a request is already in flight
-      if (statusRequestInFlightRef.current) {
-        console.log('Status request already in flight, skipping...')
-        return
-      }
-      
-      try {
-        // Mark that we're starting a request
-        statusRequestInFlightRef.current = true
-        
-        // Only fetch the current page of articles to reduce payload
-        // If filtering, fetch all articles (limit=0)
-        const limit = debouncedFilterQuery ? 0 : ITEMS_PER_PAGE
-        const page = debouncedFilterQuery ? 1 : currentPage
-        const statusResponse = await fetch(`/api/status?session=${sessionId}&page=${page}&limit=${limit}`)
-        
-        // Check if session was not found
-        if (statusResponse.status === 404) {
-          console.log('Session not found, redirecting to homepage')
-          sessionNotFoundRef.current = true
-          
-          // Stop polling immediately
-          if (pollIntervalRef.current) {
-            clearInterval(pollIntervalRef.current)
-            pollIntervalRef.current = null
-          }
-          
-          // Clear all state
-          setSessionId('')
-          setArticles([])
-          setSessionData(null)
-          setDownloadStatus(null)
-          setSessionSizeMB(0)
-          setPaymentData(null)
-          
-          // Redirect to homepage
-          router.push('/')
-          return
-        }
-        
-        const statusData = await statusResponse.json()
-
-        // Mark that we've received the first response
-        if (!hasReceivedFirstResponse) {
-          setHasReceivedFirstResponse(true)
-        }
-
-        // Update the entire session data
-        setSessionData(statusData)
-        
-        // Debug: Log fetch task status when it has an error
-        if (statusData.currentFetchTask?.status === 'error') {
-          console.log('Fetch task error detected:', statusData.currentFetchTask);
-        }
-        
-        // Update download status - always update to reflect actual filesystem state
-        if (statusData.downloadStatus) {
-          setDownloadStatus(statusData.downloadStatus);
-        }
-        
-        // Update session size
-        if (typeof statusData.sessionSizeMB === 'number') {
-          setSessionSizeMB(statusData.sessionSizeMB)
-        }
-        
-        // Update payment data
-        if (statusData.paymentData) {
-          setPaymentData(statusData.paymentData);
-        }
-        
-        // Update rate limit status
-        if (statusData.rateLimitStatus) {
-          setRateLimitStatus(statusData.rateLimitStatus);
-          // Debug log rate limit status
-          // if (statusData.rateLimitStatus.requestsInLastHour > 0) {
-          //   console.log('Frontend rate limit status:', {
-          //     ...statusData.rateLimitStatus,
-          //     hasNextRequestAvailable: !!statusData.rateLimitStatus.nextRequestAvailable
-          //   });
-          // }
-        }
-
-        // Update step when we have auth
-        if (statusData.auth && currentStep < 5) {
-          setCurrentStep(5)
-          // Don't set collapsed state here - let user control it
-        }
-
-        // Update articles with the current page from the server
-        if (statusData.articles) {
-          setArticles(statusData.articles);
-          // Use totalArticleCount from the server instead of articles.length
-          currentArticleCountRef.current = statusData.totalArticleCount || statusData.articles.length;
-        }
-      } catch (error) {
-        console.error('Status polling error:', error)
-      } finally {
-        // Always clear the in-flight flag when done (success or error)
-        statusRequestInFlightRef.current = false
-      }
-    }
-    
-    // Immediately fetch once
-    fetchStatus()
-    
-    // Then set up the interval
-    const interval = setInterval(fetchStatus, 3000) // Poll every 3 seconds
-    pollIntervalRef.current = interval
-  }
-
   const startDownloadArticles = async () => {
-    if (!sessionId || articles.length === 0) return
+    if (!sessionId || (sessionData?.totalArticleCount || 0) === 0) return
 
     try {
       const response = await fetch(`/api/task/download-articles/start?session=${sessionId}`, {
@@ -475,7 +474,7 @@ export default function PocketExportApp() {
     if (!sessionId) return
 
     const confirmed = window.confirm(
-      `Are you sure you want to delete this session?\n\nThis will permanently delete:\n• ${articles.length} articles\n• All downloaded content\n• Session authentication data\n\nYour payment status will be preserved.\n\nThis action cannot be undone.`
+      `Are you sure you want to delete this session?\n\nThis will permanently delete:\n• ${sessionData?.totalArticleCount || 0} articles\n• All downloaded content\n• Session authentication data\n\nYour payment status will be preserved.\n\nThis action cannot be undone.`
     )
 
     if (!confirmed) return
@@ -807,7 +806,7 @@ export default function PocketExportApp() {
                 </div>
 
                 {/* Content Downloading Section */}
-                {false && articles.length > 0 && (
+                {false && (sessionData?.totalArticleCount || 0) > 0 && (
                   <div className="space-y-3 pt-3 border-t">
                     <div className="flex items-center justify-between">
                       <h4 className="font-medium">Original HTML & Image Downloading &nbsp; <span className="text-orange-500">[BETA]</span> &nbsp; &nbsp; &nbsp; <small className="text-xs text-gray-500">(attempts to fetch live HTML from original URLs using curl)</small></h4>
@@ -839,7 +838,7 @@ export default function PocketExportApp() {
                           <>
                             {downloadTask.count > 0 
                               ? `${downloadTask.count}/${downloadTask.total} articles`
-                              : `0/${articles.length} articles`}
+                              : `0/${sessionData?.totalArticleCount || 0} articles`}
                             {downloadTask.status === 'completed' ? ' (completed)' :
                              downloadTask.status === 'stopped' ? ' (stopped by user)' :
                              downloadTask.status === 'error' ? ` (error: ${downloadTask.error})` : ''}
@@ -918,7 +917,7 @@ export default function PocketExportApp() {
         {sessionId && fetchTask.error?.includes('Payment required') && !paymentData?.hasUnlimitedAccess && (
           <PaywallSection 
             sessionId={sessionId}
-            articleCount={articles.length}
+            articleCount={sessionData?.totalArticleCount || articles.length}
           />
         )}
 
@@ -934,14 +933,14 @@ export default function PocketExportApp() {
             <CardContent>
               <p className="text-sm text-orange-700">
                 Pocket API has temporarily rate limited our requests. The export will automatically resume in {rateLimitRetryAfter} seconds.
-                Your {articles.length} fetched articles are safe and will continue to be displayed below.
+                Your {sessionData?.totalArticleCount || articles.length} fetched articles are safe and will continue to be displayed below.
               </p>
             </CardContent>
           </Card>
         )}
         
         {/* Slow Mode Warning */}
-        {!isRateLimited && rateLimitStatus?.isInSlowMode && (fetchTask.status === 'running' || fetchTask.status === 'idle') && articles.length > 0 && (
+        {!isRateLimited && rateLimitStatus?.isInSlowMode && (fetchTask.status === 'running' || fetchTask.status === 'idle') && (sessionData?.totalArticleCount || 0) > 0 && (
           <Card className="mb-8 border-blue-200 bg-orange-50">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2 text-orange-800">
@@ -966,12 +965,12 @@ export default function PocketExportApp() {
                   <CardTitle>Your Articles {sessionId && !hasReceivedFirstResponse ? (
                     <Loader2 className="w-4 h-4 inline animate-spin ml-2" />
                   ) : (
-                    <>({articles.length})</>
+                    <>({sessionData?.totalArticleCount || articles.length})</>
                   )}</CardTitle>
                   <CardDescription>
-                    {articles.length === 0 
+                    {(sessionData?.totalArticleCount || articles.length) === 0 
                       ? "Click 'Fetch Articles' to start importing your Pocket articles" 
-                      : "Your exported Pocket articles"}
+                      : `Your exported Pocket articles${filterQuery ? ' (filtered)' : ''}`}
                   </CardDescription>
                 </div>
                 {sessionId && (
@@ -999,7 +998,7 @@ export default function PocketExportApp() {
                         }}
                       >
                         <FileDown className="w-4 h-4 mr-2" />
-                        JSON {hasReceivedFirstResponse && `(${articles.length})`}
+                        JSON {hasReceivedFirstResponse && `(${sessionData?.totalArticleCount || articles.length})`}
                       </Button>
                       <Button
                         size="sm"
@@ -1052,7 +1051,7 @@ export default function PocketExportApp() {
                       </Button>
                     </div>
                     {exportProgress < 100 && (
-                      <p className="text-xs text-gray-500 mt-1">Download includes {articles.length} articles fetched so far</p>
+                      <p className="text-xs text-gray-500 mt-1">Download includes {sessionData?.totalArticleCount || articles.length} articles fetched so far</p>
                     )}
                   </div>
                 )}
@@ -1089,9 +1088,9 @@ export default function PocketExportApp() {
                     </Button>
                   )}
                 </div>
-                {filterQuery && (
+                {filterQuery && sessionData && (
                   <p className="text-sm text-gray-600 mt-2">
-                    Showing {filteredArticles.length} of {articles.length} articles
+                    Showing {sessionData.filteredCount} of {sessionData.totalArticleCount} articles
                     {totalPages > 1 && ` (page ${currentPage} of ${totalPages})`}
                   </p>
                 )}
@@ -1324,7 +1323,7 @@ export default function PocketExportApp() {
                   </Button>
                   
                   <span className="ml-4 text-sm text-gray-600">
-                    Page {currentPage} of {totalPages} ({filteredArticles.length} articles)
+                    Page {currentPage} of {totalPages} ({filteredCount} articles{filterQuery ? ' filtered' : ''})
                   </span>
                 </div>
               )}
@@ -1332,7 +1331,7 @@ export default function PocketExportApp() {
           </Card>
 
         {/* Empty State */}
-        {!isExporting && articles.length === 0 && !parsedRequest && (
+        {!isExporting && (sessionData?.totalArticleCount || 0) === 0 && !parsedRequest && (
           <Card className="text-center py-12">
             <CardContent>
               <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
@@ -1362,7 +1361,7 @@ export default function PocketExportApp() {
               Delete All Session Data
             </Button>
             <p className="text-xs text-gray-500 mt-2">
-              This will permanently delete {articles.length} articles and their content + your Pocket credentials from our servers. It will not affect your data on Pocket or your payment status.
+              This will permanently delete {sessionData?.totalArticleCount || 0} articles and their content + your Pocket credentials from our servers. It will not affect your data on Pocket or your payment status.
             </p>
           </div>
         )}

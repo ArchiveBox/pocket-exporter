@@ -249,7 +249,7 @@ class ExportStore {
   }
   
   
-  async getSessionArticleIds(id: string): Promise<string[]> {
+  async getSessionArticleIds(id: string, filterQuery?: string): Promise<string[]> {
     const sessionDir = path.join(this.sessionsDir, id, 'articles');
     
     try {
@@ -261,37 +261,86 @@ class ExportStore {
     try {
       const dirs = await fs.promises.readdir(sessionDir);
       
-      // Check directories in parallel
-      const checks = await Promise.all(dirs.map(async (dir) => {
-        if (dir.startsWith('.')) return null;
-        
-        const dirPath = path.join(sessionDir, dir);
-        try {
-          const stats = await fs.promises.stat(dirPath);
-          if (stats.isDirectory()) {
-            const indexPath = path.join(dirPath, 'index.json');
-            try {
-              await fs.promises.access(indexPath);
-              return dir;
-            } catch {
-              return null;
+      // If no filter, just check directories exist
+      if (!filterQuery) {
+        // Check directories in parallel
+        const checks = await Promise.all(dirs.map(async (dir) => {
+          if (dir.startsWith('.')) return null;
+          
+          const dirPath = path.join(sessionDir, dir);
+          try {
+            const stats = await fs.promises.stat(dirPath);
+            if (stats.isDirectory()) {
+              const indexPath = path.join(dirPath, 'index.json');
+              try {
+                await fs.promises.access(indexPath);
+                return dir;
+              } catch {
+                return null;
+              }
             }
+          } catch {
+            return null;
           }
-        } catch {
           return null;
-        }
-        return null;
-      }));
+        }));
+        
+        // Filter out nulls and sort
+        const articleIds = checks.filter((id): id is string => id !== null);
+        articleIds.sort((a, b) => {
+          const numA = parseInt(a, 10);
+          const numB = parseInt(b, 10);
+          return numB - numA;
+        });
+        
+        return articleIds;
+      }
       
-      // Filter out nulls and sort
-      const articleIds = checks.filter((id): id is string => id !== null);
-      articleIds.sort((a, b) => {
+      // With filter, we need to load and check each article
+      const query = filterQuery.toLowerCase();
+      const BATCH_SIZE = 100;
+      const matchingIds: string[] = [];
+      
+      // Process in batches to avoid overwhelming the file system
+      for (let i = 0; i < dirs.length; i += BATCH_SIZE) {
+        const batch = dirs.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(async (dir) => {
+          if (dir.startsWith('.')) return null;
+          
+          const dirPath = path.join(sessionDir, dir);
+          try {
+            const stats = await fs.promises.stat(dirPath);
+            if (!stats.isDirectory()) return null;
+            
+            const indexPath = path.join(dirPath, 'index.json');
+            const articleData = await fs.promises.readFile(indexPath, 'utf8');
+            const article = JSON.parse(articleData);
+            
+            // Search in title, URL, and tags
+            if (article.title?.toLowerCase().includes(query) ||
+                article.url?.toLowerCase().includes(query) ||
+                article.tags?.some((tag: any) => tag.name?.toLowerCase().includes(query))) {
+              return dir;
+            }
+          } catch {
+            // Skip on error
+          }
+          return null;
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        matchingIds.push(...batchResults.filter((id): id is string => id !== null));
+      }
+      
+      // Sort matching IDs
+      matchingIds.sort((a, b) => {
         const numA = parseInt(a, 10);
         const numB = parseInt(b, 10);
         return numB - numA;
       });
       
-      return articleIds;
+      console.log(`Found ${matchingIds.length} articles matching "${query}"`);
+      return matchingIds;
     } catch (error) {
       console.error(`Failed to get article IDs for session ${id}:`, error);
       return [];

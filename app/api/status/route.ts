@@ -55,6 +55,7 @@ export const GET = withTiming(async (request: NextRequest) => {
     const lastFetchedCount = searchParams.get('lastFetchedCount');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '0'); // 0 means load all
+    const filterQuery = searchParams.get('filter') || ''; // Filter query
 
     if (!sessionId) {
       return NextResponse.json(
@@ -110,24 +111,36 @@ export const GET = withTiming(async (request: NextRequest) => {
       );
     }
 
-    // Get total count of articles
+    // Get all article IDs (for total count) - always fresh from disk
     const allArticleIds = await exportStore.getSessionArticleIds(sessionId);
     const totalArticleCount = allArticleIds.length;
+    
+    // Get filtered article IDs if filter is provided
+    const filteredArticleIds = filterQuery 
+      ? await exportStore.getSessionArticleIds(sessionId, filterQuery)
+      : allArticleIds;
+    const filteredCount = filteredArticleIds.length;
+    
+    if (filterQuery) {
+      console.log(`Filter query: "${filterQuery}", Total: ${totalArticleCount}, Filtered: ${filteredCount}`);
+      console.log(`First 3 filtered IDs: ${filteredArticleIds.slice(0, 3).join(', ')}`);
+      console.log(`First 3 all IDs: ${allArticleIds.slice(0, 3).join(', ')}`);
+    }
     
     let allArticles: Article[];
     let pageArticleIds: string[];
     let endIndex: number;
     
     if (limit === 0) {
-      // Load all articles (backward compatibility)
-      allArticles = await exportStore.getSessionArticles(sessionId);
-      pageArticleIds = allArticleIds;
-      endIndex = totalArticleCount;
+      // Load all filtered articles
+      pageArticleIds = filteredArticleIds;
+      allArticles = await exportStore.getArticlesById(sessionId, pageArticleIds);
+      endIndex = filteredCount;
     } else {
-      // Calculate pagination
+      // Calculate pagination on filtered results
       const startIndex = (page - 1) * limit;
-      endIndex = Math.min(startIndex + limit, totalArticleCount);
-      pageArticleIds = allArticleIds.slice(startIndex, endIndex);
+      endIndex = Math.min(startIndex + limit, filteredCount);
+      pageArticleIds = filteredArticleIds.slice(startIndex, endIndex);
       
       // Load only the requested page of articles
       allArticles = await exportStore.getArticlesById(sessionId, pageArticleIds);
@@ -172,8 +185,8 @@ export const GET = withTiming(async (request: NextRequest) => {
       }
     }
     
-    // For download status, we need all article IDs but not the full articles
-    const downloadStatus = await getDownloadStatus(sessionId, allArticles, allArticleIds);
+    // For download status, we always use ALL article IDs (not filtered)
+    const downloadStatus = await getDownloadStatus(sessionId, undefined, allArticleIds);
     const sessionSizeMB = await getSessionSizeInMB(sessionId);
     let paymentData = await readPaymentData(sessionId);
     
@@ -313,10 +326,12 @@ export const GET = withTiming(async (request: NextRequest) => {
     return NextResponse.json({
       ...sanitizedSession,
       articles: minimalArticles,
-      totalArticleCount: limit === 0 ? minimalArticles.length : totalArticleCount, // Backward compatibility
+      totalArticleCount, // Always the total count from disk
+      filteredCount: filterQuery ? filteredCount : totalArticleCount, // Count after filtering
       page,
       limit,
-      hasMore: limit === 0 ? false : endIndex < totalArticleCount,
+      hasMore: limit === 0 ? false : endIndex < filteredCount,
+      filterQuery,
       downloadStatus,
       sessionSizeMB,
       paymentData,
