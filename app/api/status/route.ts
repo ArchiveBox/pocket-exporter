@@ -53,6 +53,8 @@ export const GET = withTiming(async (request: NextRequest) => {
     const searchParams = request.nextUrl.searchParams;
     const sessionId = searchParams.get('session');
     const lastFetchedCount = searchParams.get('lastFetchedCount');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '0'); // 0 means load all
 
     if (!sessionId) {
       return NextResponse.json(
@@ -108,8 +110,28 @@ export const GET = withTiming(async (request: NextRequest) => {
       );
     }
 
-    // Always return the full list of articles from disk
-    const allArticles = await exportStore.getSessionArticles(sessionId);
+    // Get total count of articles
+    const allArticleIds = await exportStore.getSessionArticleIds(sessionId);
+    const totalArticleCount = allArticleIds.length;
+    
+    let allArticles: Article[];
+    let pageArticleIds: string[];
+    let endIndex: number;
+    
+    if (limit === 0) {
+      // Load all articles (backward compatibility)
+      allArticles = await exportStore.getSessionArticles(sessionId);
+      pageArticleIds = allArticleIds;
+      endIndex = totalArticleCount;
+    } else {
+      // Calculate pagination
+      const startIndex = (page - 1) * limit;
+      endIndex = Math.min(startIndex + limit, totalArticleCount);
+      pageArticleIds = allArticleIds.slice(startIndex, endIndex);
+      
+      // Load only the requested page of articles
+      allArticles = await exportStore.getArticlesById(sessionId, pageArticleIds);
+    }
 
     // Check if download task process is actually running
     if (session.currentDownloadTask && 
@@ -150,7 +172,8 @@ export const GET = withTiming(async (request: NextRequest) => {
       }
     }
     
-    const downloadStatus = await getDownloadStatus(sessionId, allArticles);
+    // For download status, we need all article IDs but not the full articles
+    const downloadStatus = await getDownloadStatus(sessionId, allArticles, allArticleIds);
     const sessionSizeMB = await getSessionSizeInMB(sessionId);
     let paymentData = await readPaymentData(sessionId);
     
@@ -290,6 +313,10 @@ export const GET = withTiming(async (request: NextRequest) => {
     return NextResponse.json({
       ...sanitizedSession,
       articles: minimalArticles,
+      totalArticleCount: limit === 0 ? minimalArticles.length : totalArticleCount, // Backward compatibility
+      page,
+      limit,
+      hasMore: limit === 0 ? false : endIndex < totalArticleCount,
       downloadStatus,
       sessionSizeMB,
       paymentData,

@@ -214,7 +214,11 @@ class ExportStore {
   async getSessionArticles(id: string): Promise<Article[]> {
     // Use getSessionArticleIds to get valid article directories
     const articleIds = await this.getSessionArticleIds(id);
-    const sessionDir = path.join(this.sessionsDir, id, 'articles');
+    return this.getArticlesById(id, articleIds);
+  }
+  
+  async getArticlesById(sessionId: string, articleIds: string[]): Promise<Article[]> {
+    const sessionDir = path.join(this.sessionsDir, sessionId, 'articles');
     
     // Load articles in parallel batches to avoid overwhelming file system
     const BATCH_SIZE = 100;
@@ -227,7 +231,7 @@ class ExportStore {
           const indexPath = path.join(sessionDir, articleId, 'index.json');
           const articleData = await fs.promises.readFile(indexPath, 'utf8');
           const article = JSON.parse(articleData);
-          return await enrichArticleWithFallbackImages(article, id);
+          return await enrichArticleWithFallbackImages(article, sessionId);
         } catch (error) {
           console.error(`Failed to load article ${articleId}:`, error);
           return null;

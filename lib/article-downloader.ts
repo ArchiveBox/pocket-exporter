@@ -797,7 +797,7 @@ export async function downloadSingleArticle(
   }
 }
 
-export async function getDownloadStatus(sessionId: string, articles?: any[]): Promise<{
+export async function getDownloadStatus(sessionId: string, articles?: any[], allArticleIds?: string[]): Promise<{
   total: number;
   completed: number;
   downloading: number;
@@ -806,8 +806,11 @@ export async function getDownloadStatus(sessionId: string, articles?: any[]): Pr
 }> {
   const articleStatus: Record<string, 'pending' | 'downloading' | 'completed' | 'error'> = {};
   
+  // Use allArticleIds if provided, otherwise fall back to articles array
+  const articleIds = allArticleIds || articles?.map(a => a.savedId) || [];
+  
   // Early return if no articles
-  if (!articles || articles.length === 0) {
+  if (articleIds.length === 0) {
     return {
       total: 0,
       completed: 0,
@@ -862,17 +865,17 @@ export async function getDownloadStatus(sessionId: string, articles?: any[]): Pr
     console.error('Error reading articles directory:', e);
   }
   
-  // Now process each article
-  articles.forEach((article: Article) => {
+  // Now process each article ID
+  articleIds.forEach((articleId: string) => {
     // Check if currently downloading from queue
-    if (currentlyDownloading.has(article.savedId)) {
-      articleStatus[article.savedId] = 'downloading';
+    if (currentlyDownloading.has(articleId)) {
+      articleStatus[articleId] = 'downloading';
       downloading++;
-    } else if (completedArticles.has(article.savedId)) {
-      articleStatus[article.savedId] = 'completed';
+    } else if (completedArticles.has(articleId)) {
+      articleStatus[articleId] = 'completed';
       completed++;
     } else {
-      articleStatus[article.savedId] = 'pending';
+      articleStatus[articleId] = 'pending';
     }
   });
 
