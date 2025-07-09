@@ -286,7 +286,11 @@ export default function PocketExportApp() {
         // Mark that we're starting a request
         statusRequestInFlightRef.current = true
         
-        const statusResponse = await fetch(`/api/status?session=${sessionId}`)
+        // Only fetch the current page of articles to reduce payload
+        // If filtering, fetch all articles (limit=0)
+        const limit = debouncedFilterQuery ? 0 : ITEMS_PER_PAGE
+        const page = debouncedFilterQuery ? 1 : currentPage
+        const statusResponse = await fetch(`/api/status?session=${sessionId}&page=${page}&limit=${limit}`)
         
         // Check if session was not found
         if (statusResponse.status === 404) {
@@ -360,10 +364,11 @@ export default function PocketExportApp() {
           // Don't set collapsed state here - let user control it
         }
 
-        // Update articles with the full list from the server
+        // Update articles with the current page from the server
         if (statusData.articles) {
           setArticles(statusData.articles);
-          currentArticleCountRef.current = statusData.articles.length;
+          // Use totalArticleCount from the server instead of articles.length
+          currentArticleCountRef.current = statusData.totalArticleCount || statusData.articles.length;
         }
       } catch (error) {
         console.error('Status polling error:', error)
@@ -377,7 +382,7 @@ export default function PocketExportApp() {
     fetchStatus()
     
     // Then set up the interval
-    const interval = setInterval(fetchStatus, 2000) // Poll every 2 seconds
+    const interval = setInterval(fetchStatus, 3000) // Poll every 3 seconds
     pollIntervalRef.current = interval
   }
 
@@ -686,12 +691,12 @@ export default function PocketExportApp() {
                     <span>Articles pulled (metadata + text): {sessionId && !hasReceivedFirstResponse ? (
                       <Loader2 className="w-4 h-4 inline animate-spin" />
                     ) : (
-                      <><strong>{articles.length}</strong>{!paymentData?.hasUnlimitedAccess && articles.length >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</>
+                      <><strong>{sessionData?.totalArticleCount || articles.length}</strong>{!paymentData?.hasUnlimitedAccess && (sessionData?.totalArticleCount || articles.length) >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</>
                     )}</span>
                     <span title="click the 📸 icon on individual articles below to include their live images and HTML into the export (50MB limit per article)">Article images downloaded: {sessionId && !hasReceivedFirstResponse ? (
                       <Loader2 className="w-4 h-4 inline animate-spin" />
                     ) : (
-                      <strong>{downloadStatus?.completed || 0}/{articles.length}</strong>
+                      <strong>{downloadStatus?.completed || 0}/{sessionData?.totalArticleCount || articles.length}</strong>
                     )}</span>
                     <span>Total export size: {sessionId && !hasReceivedFirstResponse ? (
                       <Loader2 className="w-4 h-4 inline animate-spin" />
@@ -754,7 +759,7 @@ export default function PocketExportApp() {
                           </>
                         ) : (
                           <>
-                            {articles.length} total articles
+                            {sessionData?.totalArticleCount || articles.length} total articles
                             {fetchTask.status === 'completed' ? ' (completed)' :
                              fetchTask.status === 'stopped' ? ' (stopped by user)' :
                              fetchTask.status === 'error' ? ` (error: ${fetchTask.error})` : ''}
