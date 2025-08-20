@@ -197,7 +197,7 @@ NEXT_PUBLIC_BASE_URL=http://localhost:3000
 
 ## ⚠️ Caveats & Limitations
 
-1. **Rate Limiting**: Pocket's API has rate limits. The tool automatically handles these with retries.
+1. **Rate Limiting**: Pocket's API has rate limits. The tool automatically handles these with retries. (~9.5k req per day, 300 per hour)
 2. **Large Libraries**: Most exports complete in <15min, some accounts with >20k articles can hit hourly ratelimits (adds +1 hour of time)
 3. **Authentication**: Pocket cookies expire after ~2 weeks of inactivity / upon logout
 4. **📸 Original HTML & Images**: Pocket's archived copy of the article text is always fetched, but the original source HTML and featured images can also be exported on a per-article basis by clicking `(📸)`. This is is best-effort (as original sites may be offline), and is limited to 50mb max per article.
