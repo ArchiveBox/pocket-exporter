@@ -1,13 +1,13 @@
-# Pocket Exporter
+# Pocket Exporter [⚠️ NO LONGER WORKING]
 
 A web-based tool to export your complete Pocket library before it shuts down in October 2025. This tool extracts everything that Pocket's official CSV export leaves out: article text, tags, favorites, images, and all metadata.
 
 > [!IMPORTANT]
-> ***Still working as of 2025-07-08: You can still grab your GraphQL request after logging in to https://getpocket.com/home***
+> ***No longer working as of 2025-10-01: Unfortunately all APIs have been shut down and exports are no longer available, open a new issue to ask for a refund if you paid and weren't able to export your data***
 
 ## 🚨 Why This Tool Exists
 
-Mozilla is [shutting down Pocket in October 2025](https://getpocket.com/farewell) and will delete all user data. Their official export only provides a basic CSV with URLs and titles - no article content, no tags, no highlights, no ⭐️, no images, nothing else. This tool uses Pocket's internal APIs to export **everything**.
+Mozilla is [shut down Pocket in October 2025](https://getpocket.com/farewell) and will delete all user data. Their official export only provides a basic CSV with URLs and titles - no article content, no tags, no highlights, no ⭐️, no images, nothing else. This tool uses Pocket's internal APIs to export **everything**.
 
 ## ✨ Features
 
