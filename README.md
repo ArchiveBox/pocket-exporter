@@ -1,4 +1,4 @@
-# Pocket Exporter [⚠️ NO LONGER WORKING]
+# Pocket Exporter [⚠️ DEADLINE Oct. 8]
 
 A web-based tool to export your complete Pocket library before it shuts down in October 2025. This tool extracts everything that Pocket's official CSV export leaves out: article text, tags, favorites, images, and all metadata.
 
