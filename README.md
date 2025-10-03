@@ -7,7 +7,7 @@ A web-based tool to export your complete Pocket library before it shuts down in 
 
 ## 🚨 Why This Tool Exists
 
-Mozilla is [shut down Pocket in October 2025](https://getpocket.com/farewell) and will delete all user data. Their official export only provides a basic CSV with URLs and titles - no article content, no tags, no highlights, no ⭐️, no images, nothing else. This tool uses Pocket's internal APIs to export **everything**.
+Mozilla [shut down Pocket in October 2025](https://getpocket.com/farewell) and will delete all user data shortly. Their official export only provides a basic CSV with URLs and titles - no article content, no tags, no highlights, no ⭐️, no images, nothing else. This tool used Pocket's internal APIs to export **everything**.
 
 ## ✨ Features
 
