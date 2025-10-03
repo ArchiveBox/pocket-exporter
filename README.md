@@ -3,7 +3,7 @@
 A web-based tool to export your complete Pocket library before it shuts down in October 2025. This tool extracts everything that Pocket's official CSV export leaves out: article text, tags, favorites, images, and all metadata.
 
 > [!IMPORTANT]
-> ***No longer supported as of 2025-10-01 but might work until 10-08: Unfortunately I no longer have a working account I can debug with, open a new issue to ask for a refund if you paid and weren't able to export your data***
+> ***No longer supported as of 2025-09-20 but might work until 10-08 if you're lucky: Unfortunately I no longer have a working account I can debug with, open a new issue to ask for a refund if you paid and weren't able to export your data***
 
 ## 🚨 Why This Tool Exists
 
