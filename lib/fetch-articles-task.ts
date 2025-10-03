@@ -260,16 +260,18 @@ export async function runFetchArticlesTask(sessionId: string): Promise<void> {
       break;
     }
     
-    // Check if we've hit the paywall limit
-    if (!(await canFetchMoreArticles(sessionId, totalFetched))) {
-      console.log('\n⚠️  Reached free tier limit of 100 articles. Payment required to continue.');
-      await exportStore.updateFetchTask(sessionId, {
-        status: 'stopped',
-        error: 'Payment required - reached 100 article limit',
-        endedAt: new Date()
-      });
-      break;
-    }
+    // Paywall disabled - no article limit check
+    // Original paywall code commented out:
+    // // Check if we've hit the paywall limit
+    // if (!(await canFetchMoreArticles(sessionId, totalFetched))) {
+    //   console.log('\n⚠️  Reached free tier limit of 100 articles. Payment required to continue.');
+    //   await exportStore.updateFetchTask(sessionId, {
+    //     status: 'stopped',
+    //     error: 'Payment required - reached 100 article limit',
+    //     endedAt: new Date()
+    //   });
+    //   break;
+    // }
 
     if (cursor) {
       variables.pagination.after = cursor;

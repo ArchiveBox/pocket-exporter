@@ -13,7 +13,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ExternalLink, Copy, Search, Code, Download, CheckCircle, Clock, Globe, Tag, X, AlertCircle, FileDown, ChevronDown, ChevronUp, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Article } from "@/types/article"
 import { ArticleImage } from "@/components/article-image"
-import { PaywallSection } from "@/components/PaywallSection"
+// Paywall disabled - import commented out
+// import { PaywallSection } from "@/components/PaywallSection"
 import * as AccordionPrimitive from '@radix-ui/react-accordion';
 
 interface ParsedRequest {
@@ -546,12 +547,12 @@ export default function PocketExportApp() {
             <br/><br/>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
               <div className="text-center sm:text-left">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">🎁 Free for up to 100 articles</h3>
-                <p className="text-gray-600">Test it out easily with no credit card</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">🎁 Free unlimited export</h3>
+                <p className="text-gray-600">Export all your articles with no limits</p>
               </div>
               <div className="text-center sm:text-left">
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">💎 $8 one-time fee for full export</h3>
-                <p className="text-gray-600">Up to 100k articles + Permanent Library</p>
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">💎 Unlimited articles</h3>
+                <p className="text-gray-600">Export your entire Pocket library</p>
               </div>
             </div>
           </div>
@@ -691,7 +692,7 @@ export default function PocketExportApp() {
                     <span>Articles pulled (metadata + text): {sessionId && !hasReceivedFirstResponse ? (
                       <Loader2 className="w-4 h-4 inline animate-spin" />
                     ) : (
-                      <><strong>{sessionData?.totalArticleCount || articles.length}</strong>{!paymentData?.hasUnlimitedAccess && (sessionData?.totalArticleCount || articles.length) >= 100 && <span className="text-orange-600"> (Free tier limit)</span>}</>
+                      <><strong>{sessionData?.totalArticleCount || articles.length}</strong></>
                     )}</span>
                     <span title="click the 📸 icon on individual articles below to include their live images and HTML into the export (50MB limit per article)">Article images downloaded: {sessionId && !hasReceivedFirstResponse ? (
                       <Loader2 className="w-4 h-4 inline animate-spin" />
@@ -913,13 +914,13 @@ export default function PocketExportApp() {
             </CardContent>
           </Card>
 
-        {/* Paywall Section - Show inline when payment is required */}
-        {sessionId && fetchTask.error?.includes('Payment required') && !paymentData?.hasUnlimitedAccess && (
+        {/* Paywall disabled - section commented out */}
+        {/* {sessionId && fetchTask.error?.includes('Payment required') && !paymentData?.hasUnlimitedAccess && (
           <PaywallSection 
             sessionId={sessionId}
             articleCount={sessionData?.totalArticleCount || articles.length}
           />
-        )}
+        )} */}
 
         {/* Rate Limit Warning */}
         {isRateLimited && (

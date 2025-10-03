@@ -79,9 +79,13 @@ export async function updatePaymentData(sessionId: string, updates: Partial<Sess
 }
 
 export async function hasValidPayment(sessionId: string): Promise<boolean> {
-  const paymentData = await readPaymentData(sessionId);
-  return paymentData?.hasUnlimitedAccess === true && 
-         paymentData?.payment?.status === 'completed';
+  // Paywall disabled - everyone has valid payment
+  return true;
+  
+  // Original paywall code commented out:
+  // const paymentData = await readPaymentData(sessionId);
+  // return paymentData?.hasUnlimitedAccess === true && 
+  //        paymentData?.payment?.status === 'completed';
 }
 
 // Helper function to fetch complete payment details from Stripe
@@ -135,15 +139,19 @@ export async function fetchCompletePaymentDetails(
 }
 
 export async function canFetchMoreArticles(sessionId: string, currentArticleCount: number): Promise<boolean> {
-  const paymentData = await readPaymentData(sessionId);
+  // Paywall disabled - everyone gets unlimited access
+  return true;
   
-  // If they have unlimited access, they can fetch more
-  if (paymentData?.hasUnlimitedAccess === true) {
-    return true;
-  }
-  
-  // Otherwise, check if they've hit the 100 article limit
-  return currentArticleCount < 100;
+  // Original paywall code commented out:
+  // const paymentData = await readPaymentData(sessionId);
+  // 
+  // // If they have unlimited access, they can fetch more
+  // if (paymentData?.hasUnlimitedAccess === true) {
+  //   return true;
+  // }
+  // 
+  // // Otherwise, check if they've hit the 100 article limit
+  // return currentArticleCount < 100;
 }
 
 export async function recordArticlesFetched(sessionId: string, count: number): Promise<void> {
