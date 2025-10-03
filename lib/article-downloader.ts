@@ -846,20 +846,24 @@ export async function getDownloadStatus(sessionId: string, articles?: any[], all
     // Read all directories at once to minimize filesystem calls
     const articleDirs = await fs.promises.readdir(articlesDir, { withFileTypes: true });
     
-    // Check each directory for original.html in parallel
-    await Promise.all(articleDirs.map(async (dir) => {
-      if (dir.isDirectory()) {
-        try {
-          const originalHtmlPath = path.join(articlesDir, dir.name, 'original.html');
-          const stats = await fs.promises.stat(originalHtmlPath);
-          if (stats.size > 0) {
-            completedArticles.add(dir.name);
+    // Check each directory for original.html in batches to avoid overwhelming the filesystem
+    const BATCH_SIZE = 100;
+    for (let i = 0; i < articleDirs.length; i += BATCH_SIZE) {
+      const batch = articleDirs.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (dir) => {
+        if (dir.isDirectory()) {
+          try {
+            const originalHtmlPath = path.join(articlesDir, dir.name, 'original.html');
+            const stats = await fs.promises.stat(originalHtmlPath);
+            if (stats.size > 0) {
+              completedArticles.add(dir.name);
+            }
+          } catch (e) {
+            // File doesn't exist, skip
           }
-        } catch (e) {
-          // File doesn't exist, skip
         }
-      }
-    }));
+      }));
+    }
   } catch (e) {
     // Directory doesn't exist or error reading it
     console.error('Error reading articles directory:', e);

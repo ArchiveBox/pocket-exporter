@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exportStore } from '@/lib/export-store';
 import { getDownloadStatus } from '@/lib/article-downloader';
-import { getSessionSizeInMB, readPaymentData, updatePaymentData, fetchCompletePaymentDetails } from '@/lib/session-utils';
+import { readPaymentData, updatePaymentData, fetchCompletePaymentDetails } from '@/lib/session-utils';
 import { stripe } from '@/lib/stripe';
 import { execSync } from 'child_process';
 import { withTiming } from '@/lib/with-timing';
@@ -121,11 +121,6 @@ export const GET = withTiming(async (request: NextRequest) => {
       : allArticleIds;
     const filteredCount = filteredArticleIds.length;
     
-    if (filterQuery) {
-      console.log(`Filter query: "${filterQuery}", Total: ${totalArticleCount}, Filtered: ${filteredCount}`);
-      console.log(`First 3 filtered IDs: ${filteredArticleIds.slice(0, 3).join(', ')}`);
-      console.log(`First 3 all IDs: ${allArticleIds.slice(0, 3).join(', ')}`);
-    }
     
     let allArticles: Article[];
     let pageArticleIds: string[];
@@ -185,9 +180,15 @@ export const GET = withTiming(async (request: NextRequest) => {
       }
     }
     
-    // For download status, we always use ALL article IDs (not filtered)
-    const downloadStatus = await getDownloadStatus(sessionId, undefined, allArticleIds);
-    const sessionSizeMB = await getSessionSizeInMB(sessionId);
+    // Skip expensive download status check for large sessions
+    const downloadStatus = { 
+      total: totalArticleCount,
+      completed: 0,
+      downloading: 0,
+      errors: 0,
+      articleStatus: {}
+    };
+    const sessionSizeMB = 0; // Removed expensive size calculation
     let paymentData = await readPaymentData(sessionId);
     
     // Only check and sync payment status with Stripe if payment is not already completed

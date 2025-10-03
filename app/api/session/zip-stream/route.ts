@@ -40,13 +40,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Create a PassThrough stream
-    const passThrough = new PassThrough();
+    // Create a PassThrough stream with larger buffer
+    const passThrough = new PassThrough({
+      highWaterMark: 16 * 1024 * 1024 // 16MB buffer
+    });
     
-    // Create archive
+    // Create archive with optimized settings for speed
     const archive = archiver('zip', {
-      zlib: { level: 5 }, // Medium compression for better performance
-      highWaterMark: 1024 * 1024 // 1MB chunks
+      zlib: { level: 0 }, // No compression - store only
+      highWaterMark: 16 * 1024 * 1024, // 16MB chunks
+      statConcurrency: 32 // Process more files in parallel
     });
 
     // Pipe archive to passthrough

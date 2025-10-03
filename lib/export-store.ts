@@ -261,32 +261,12 @@ class ExportStore {
     try {
       const dirs = await fs.promises.readdir(sessionDir);
       
-      // If no filter, just check directories exist
+      // If no filter, just return directory names that look like article IDs
       if (!filterQuery) {
-        // Check directories in parallel
-        const checks = await Promise.all(dirs.map(async (dir) => {
-          if (dir.startsWith('.')) return null;
-          
-          const dirPath = path.join(sessionDir, dir);
-          try {
-            const stats = await fs.promises.stat(dirPath);
-            if (stats.isDirectory()) {
-              const indexPath = path.join(dirPath, 'index.json');
-              try {
-                await fs.promises.access(indexPath);
-                return dir;
-              } catch {
-                return null;
-              }
-            }
-          } catch {
-            return null;
-          }
-          return null;
-        }));
+        // Simply filter directories that are numeric (article IDs)
+        const articleIds = dirs.filter(dir => !dir.startsWith('.') && /^\d+$/.test(dir));
         
-        // Filter out nulls and sort
-        const articleIds = checks.filter((id): id is string => id !== null);
+        // Sort numerically
         articleIds.sort((a, b) => {
           const numA = parseInt(a, 10);
           const numB = parseInt(b, 10);
@@ -339,7 +319,6 @@ class ExportStore {
         return numB - numA;
       });
       
-      console.log(`Found ${matchingIds.length} articles matching "${query}"`);
       return matchingIds;
     } catch (error) {
       console.error(`Failed to get article IDs for session ${id}:`, error);
